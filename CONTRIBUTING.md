@@ -16,4 +16,6 @@ Hardware reports should include:
 - whether the USB receiver or Bluetooth mode was used.
 
 Do not add write commands for unknown HID opcodes. Device-control changes need
-captured protocol evidence and explicit testing on supported hardware.
+captured protocol evidence and explicit testing on supported hardware. The
+documented noise-control command is `cc 41 08 00 00 MODE` as a 64-byte HID
+Output Report.

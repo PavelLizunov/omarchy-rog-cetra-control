@@ -28,6 +28,8 @@ Panel {
   property var leftLevel: null
   property var rightLevel: null
   property var caseLevel: null
+  property string listeningMode: "unknown"
+  property string pendingMode: ""
   property int failedSamples: 0
   property bool refreshPending: false
   property bool hasFreshData: false
@@ -40,6 +42,11 @@ Panel {
   }
 
   readonly property bool showsPercentage: showPercentage && connected && lowestLevel >= 0 && !button.vertical
+  readonly property var modeOptions: [
+    { value: "off", label: "Off", shortcut: "O" },
+    { value: "anc", label: "ANC", shortcut: "N" },
+    { value: "ambient", label: "Ambient", shortcut: "A" }
+  ]
   readonly property string statusLabel: {
     if (deviceStatus === "helper-missing") return "Battery helper is not installed"
     if (deviceStatus === "permission-denied") return "No permission to read the receiver"
@@ -91,6 +98,8 @@ Panel {
     leftLevel = data.left === undefined ? null : data.left
     rightLevel = data.right === undefined ? null : data.right
     caseLevel = data.case === undefined ? null : data.case
+    listeningMode = String(data.mode || "unknown")
+    if (pendingMode !== "" && listeningMode === pendingMode) pendingMode = ""
   }
 
   function refresh() {
@@ -108,6 +117,13 @@ Panel {
     if (refreshPending) Qt.callLater(root.refresh)
   }
 
+  function setListeningMode(mode) {
+    if (!connected || modeProc.running) return
+    pendingMode = mode
+    modeProc.command = [root.statusCommand, "--set-mode", mode]
+    modeProc.running = true
+  }
+
   Component.onCompleted: refresh()
   onOpenedChanged: if (opened) refreshDebounce.restart()
 
@@ -119,6 +135,18 @@ Panel {
       onStreamFinished: root.applyStatus(text)
     }
     onExited: root.finishRefresh()
+  }
+
+  Process {
+    id: modeProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyStatus(text)
+    }
+    onExited: {
+      root.pendingMode = ""
+      refreshDebounce.restart()
+    }
   }
 
   Timer {
@@ -204,6 +232,18 @@ Panel {
       anchors.fill: parent
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
+      Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_O) {
+          root.setListeningMode("off")
+          event.accepted = true
+        } else if (event.key === Qt.Key_N) {
+          root.setListeningMode("anc")
+          event.accepted = true
+        } else if (event.key === Qt.Key_A) {
+          root.setListeningMode("ambient")
+          event.accepted = true
+        }
+      }
 
       Column {
         id: column
@@ -286,6 +326,53 @@ Panel {
                 }
               }
             }
+          }
+        }
+
+        Column {
+          width: parent.width
+          spacing: Style.space(10)
+          visible: root.connected
+
+          PanelSectionHeader {
+            width: parent.width
+            text: "NOISE CONTROL"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+          }
+
+          Row {
+            id: modeRow
+            width: parent.width
+            spacing: Style.space(8)
+
+            Repeater {
+              model: root.modeOptions
+
+              delegate: Button {
+                required property var modelData
+                width: (modeRow.width - modeRow.spacing * 2) / 3
+                text: modelData.label
+                iconText: modelData.shortcut
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                fontSize: Style.font.bodySmall
+                bordered: true
+                active: root.listeningMode === modelData.value
+                enabled: !modeProc.running
+                onClicked: root.setListeningMode(modelData.value)
+              }
+            }
+          }
+
+          Text {
+            width: parent.width
+            text: root.pendingMode !== ""
+              ? "Switching to " + root.pendingMode.toUpperCase() + "…"
+              : "Shortcuts: O Off · N ANC · A Ambient"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
           }
         }
 

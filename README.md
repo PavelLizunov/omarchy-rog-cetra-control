@@ -1,7 +1,7 @@
 # ROG Cetra Battery for Omarchy
 
 Shows left, right, and case battery levels for ROG Cetra True Wireless
-SpeedNova through its USB receiver.
+SpeedNova through its USB receiver, and switches Off, ANC, and Ambient modes.
 
 Supported receiver: `0b05:1ad3`.
 
@@ -12,6 +12,10 @@ The response fields are:
 - byte 7: right earbud battery
 - byte 8: case battery
 - `255`: component unavailable or in the case
+
+Noise control uses the 64-byte HID Output Report `cc 41 08 00 00 MODE`, where
+`0` is Off, `1` is ANC, and `2` is Ambient. The selected mode is verified with
+the readback request `cc 12 25`.
 
 ## Install
 
@@ -79,9 +83,10 @@ is removed together with the plugin.
 ## Security and privacy
 
 - Reads only the USB HID device `0b05:1ad3`.
-- Sends the read-only status request `cc 12 07`.
+- Sends status requests `cc 12 07` and `cc 12 25`.
+- Sends `cc 41 08` only when the user explicitly changes noise control.
 - Does not use the network.
-- Does not change firmware, audio, microphone, or headset settings.
+- Does not change firmware, audio routing, microphone, or unrelated headset settings.
 - Does not collect serial numbers or other identifiers.
 - `setup` may install `base-devel`, `hidapi`, and `pkgconf` through
   `omarchy pkg add` when they are missing.
