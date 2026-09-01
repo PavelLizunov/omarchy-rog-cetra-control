@@ -382,7 +382,7 @@ Panel {
 
         Text {
           width: parent.width
-          text: "Battery data is read directly from the ASUS USB receiver. The plugin does not change audio, microphone, firmware, or headset settings."
+          text: "Battery and noise control use the ASUS USB receiver. The plugin does not change audio routing, microphone, firmware, or unrelated headset settings."
           wrapMode: Text.WordWrap
           color: root.dim
           font.family: root.fontFamily

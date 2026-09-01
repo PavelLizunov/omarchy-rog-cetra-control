@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 - 2026-09-01
+
+- Add marketplace preview.
+- Clarify the hardware-control disclosure in the panel.
+
 ## 1.2.0 - 2026-09-01
 
 - Add verified Off, ANC, and Ambient mode switching.

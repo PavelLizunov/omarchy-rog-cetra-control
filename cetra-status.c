@@ -107,12 +107,17 @@ static bool read_status(hid_device *device, struct status *value) {
   return true;
 }
 
-static bool set_mode(hid_device *device, int mode) {
-  unsigned char report[64] = {0};
+static void build_mode_report(unsigned char *report, int mode) {
+  memset(report, 0, 64);
   report[0] = 0xcc;
   report[1] = 0x41;
   report[2] = 0x08;
   report[5] = (unsigned char)mode;
+}
+
+static bool set_mode(hid_device *device, int mode) {
+  unsigned char report[64];
+  build_mode_report(report, mode);
   return hid_send_output_report(device, report, sizeof(report)) == (int)sizeof(report);
 }
 
@@ -172,6 +177,11 @@ static int selftest(void) {
   if (value.state != 5 || value.left != 91 || value.right != 98 || value.case_level != 100) return 1;
   if (parse_mode("off") != 0 || parse_mode("anc") != 1 || parse_mode("ambient") != 2) return 1;
   if (strcmp(mode_name(1), "anc") != 0) return 1;
+  unsigned char report[64];
+  build_mode_report(report, 2);
+  if (report[0] != 0xcc || report[1] != 0x41 || report[2] != 0x08 || report[5] != 2) return 1;
+  for (size_t i = 0; i < sizeof(report); i++)
+    if (i != 0 && i != 1 && i != 2 && i != 5 && report[i] != 0) return 1;
   puts("ok");
   return 0;
 }

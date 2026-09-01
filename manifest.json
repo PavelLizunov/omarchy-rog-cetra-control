@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.pavellizunov.rog-cetra-battery",
   "name": "ROG Cetra Battery",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": "PavelLizunov",
   "license": "MIT",
   "description": "Battery levels and noise-control modes for ROG Cetra True Wireless SpeedNova over the USB receiver.",
