@@ -6,7 +6,7 @@ import qs.Ui
 
 Panel {
   id: root
-  moduleName: "io.github.pavellizunov.rog-cetra-battery"
+  moduleName: "io.github.pavellizunov.rog-cetra-control"
   manageIpc: false
 
   readonly property string statusCommand: Qt.resolvedUrl("bin/cetra-status").toString().replace("file://", "")
@@ -48,7 +48,7 @@ Panel {
     { value: "ambient", label: "Ambient", shortcut: "A" }
   ]
   readonly property string statusLabel: {
-    if (deviceStatus === "helper-missing") return "Battery helper is not installed"
+    if (deviceStatus === "helper-missing") return "Device helper is not installed"
     if (deviceStatus === "permission-denied") return "No permission to read the receiver"
     if (deviceStatus === "protocol-error") return "Unsupported receiver response"
     if (deviceStatus === "timeout" || deviceStatus === "busy") return "Waiting for receiver data"

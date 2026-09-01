@@ -124,8 +124,8 @@ static bool set_mode(hid_device *device, int mode) {
 static void cache_paths(char *lock_path, size_t lock_size, char *cache_path, size_t cache_size) {
   const char *runtime = getenv("XDG_RUNTIME_DIR");
   if (!runtime || !*runtime) runtime = "/tmp";
-  snprintf(lock_path, lock_size, "%s/rog-cetra-battery.lock", runtime);
-  snprintf(cache_path, cache_size, "%s/rog-cetra-battery.status", runtime);
+  snprintf(lock_path, lock_size, "%s/rog-cetra-control.lock", runtime);
+  snprintf(cache_path, cache_size, "%s/rog-cetra-control.status", runtime);
 }
 
 static bool print_cache(const char *path) {

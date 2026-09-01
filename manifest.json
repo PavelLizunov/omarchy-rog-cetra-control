@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "id": "io.github.pavellizunov.rog-cetra-battery",
-  "name": "ROG Cetra Battery",
-  "version": "1.2.1",
+  "id": "io.github.pavellizunov.rog-cetra-control",
+  "name": "ROG Cetra Control",
+  "version": "1.3.0",
   "author": "PavelLizunov",
   "license": "MIT",
-  "description": "Battery levels and noise-control modes for ROG Cetra True Wireless SpeedNova over the USB receiver.",
+  "description": "Controls and status for ROG Cetra True Wireless SpeedNova through the USB receiver.",
   "kinds": [
     "bar-widget"
   ],
@@ -13,8 +13,8 @@
     "barWidget": "Cetra.qml"
   },
   "barWidget": {
-    "displayName": "ROG Cetra Battery",
-    "description": "Shows battery levels and switches Off, ANC, and Ambient modes through the USB receiver.",
+    "displayName": "ROG Cetra Control",
+    "description": "Battery status and hardware controls for ROG Cetra True Wireless SpeedNova.",
     "category": "Audio",
     "allowMultiple": false,
     "defaultSection": "right",

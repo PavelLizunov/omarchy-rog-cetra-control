@@ -1,4 +1,4 @@
-# ROG Cetra Battery for Omarchy
+# ROG Cetra Control for Omarchy
 
 Shows left, right, and case battery levels for ROG Cetra True Wireless
 SpeedNova through its USB receiver, and switches Off, ANC, and Ambient modes.
@@ -22,9 +22,9 @@ the readback request `cc 12 25`.
 Install the plugin from GitHub, build the local HID reader, and enable it:
 
 ```bash
-omarchy plugin add https://github.com/PavelLizunov/omarchy-rog-cetra-battery.git --yes
-~/.config/omarchy/plugins/io.github.pavellizunov.rog-cetra-battery/setup
-omarchy plugin enable io.github.pavellizunov.rog-cetra-battery --section right
+omarchy plugin add https://github.com/PavelLizunov/omarchy-rog-cetra-control.git --yes
+~/.config/omarchy/plugins/io.github.pavellizunov.rog-cetra-control/setup
+omarchy plugin enable io.github.pavellizunov.rog-cetra-control --section right
 ```
 
 No per-headset calibration is required. The left/right case tests were only
@@ -50,7 +50,7 @@ validates third-party plugins but does not execute their installation scripts.
 ## Verify
 
 ```bash
-~/.config/omarchy/plugins/io.github.pavellizunov.rog-cetra-battery/tests/run.sh
+~/.config/omarchy/plugins/io.github.pavellizunov.rog-cetra-control/tests/run.sh
 ```
 
 The checks validate the Omarchy manifest, compile with warnings treated as
@@ -65,15 +65,15 @@ CETRA_STATUS_FIXTURE='{"status":"ok","receiver":true,"connected":true,"state":5,
 ## Update
 
 ```bash
-omarchy plugin update io.github.pavellizunov.rog-cetra-battery
-~/.config/omarchy/plugins/io.github.pavellizunov.rog-cetra-battery/setup
+omarchy plugin update io.github.pavellizunov.rog-cetra-control
+~/.config/omarchy/plugins/io.github.pavellizunov.rog-cetra-control/setup
 ```
 
 ## Remove
 
 ```bash
-omarchy plugin disable io.github.pavellizunov.rog-cetra-battery
-omarchy plugin remove io.github.pavellizunov.rog-cetra-battery
+omarchy plugin disable io.github.pavellizunov.rog-cetra-control
+omarchy plugin remove io.github.pavellizunov.rog-cetra-control
 ```
 
 The plugin installs no system service and writes no persistent device data.
@@ -96,6 +96,13 @@ is removed together with the plugin.
 Tested with ROG Cetra True Wireless SpeedNova receiver `0b05:1ad3` on Omarchy
 Quattro. Other Cetra models and hardware revisions may use different USB IDs or
 response layouts and are not currently supported.
+
+## Renamed from ROG Cetra Battery
+
+Versions through `1.2.1` used the plugin ID
+`io.github.pavellizunov.rog-cetra-battery`. The project was renamed before its
+marketplace submission because it now covers device controls as well as battery
+status. Remove the old plugin ID before installing the new one.
 
 ## Trademark notice
 

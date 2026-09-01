@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0 - 2026-09-01
+
+- Rename the project to ROG Cetra Control.
+- Move to the final plugin ID `io.github.pavellizunov.rog-cetra-control`.
+- Reserve the broader project scope for microphone and gesture controls.
+
 ## 1.2.1 - 2026-09-01
 
 - Add marketplace preview.
