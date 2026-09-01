@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+omarchy plugin validate "$plugin_dir"
+
+if ! command -v cc >/dev/null || ! pkg-config --exists hidapi-hidraw; then
+  omarchy pkg add base-devel hidapi pkgconf
+fi
+
+mkdir -p "$plugin_dir/bin"
+build_dir="${XDG_RUNTIME_DIR:-/tmp}/slovn-cetra-build.$$"
+trap 'rm -rf "$build_dir"' EXIT
+mkdir -p "$build_dir"
+
+cc -O2 -Wall -Wextra \
+  -o "$build_dir/cetra-status" \
+  "$plugin_dir/cetra-status.c" \
+  $(pkg-config --cflags --libs hidapi-hidraw)
+chmod 755 "$build_dir/cetra-status"
+"$build_dir/cetra-status" --selftest >/dev/null
+mv -f "$build_dir/cetra-status" "$plugin_dir/bin/cetra-status"
+
+if ! lsusb -d 0b05:1ad3 >/dev/null 2>&1; then
+  printf '%s\n' "ROG Cetra SpeedNova receiver 0b05:1ad3 is not connected." >&2
+fi
+
+omarchy plugin validate "$plugin_dir"
+omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+printf '%s\n' "ROG Cetra battery reader is ready."
+printf '%s\n' "Enable it with: omarchy plugin enable io.github.pavellizunov.rog-cetra-battery --section right"

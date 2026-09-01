@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.pavellizunov.rog-cetra-battery",
+  "name": "ROG Cetra Battery",
+  "version": "1.1.0",
+  "author": "PavelLizunov",
+  "license": "MIT",
+  "description": "Battery levels for ROG Cetra True Wireless SpeedNova over the USB receiver.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Cetra.qml"
+  },
+  "barWidget": {
+    "displayName": "ROG Cetra Battery",
+    "description": "Shows left, right, and case battery levels from the USB receiver.",
+    "category": "Audio",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "showPercentage": true,
+      "hideWhenReceiverMissing": true,
+      "refreshIntervalSec": 5,
+      "openRefreshIntervalSec": 2
+    },
+    "schema": [
+      {
+        "key": "showPercentage",
+        "type": "boolean",
+        "label": "Show battery percent in the bar",
+        "defaultValue": true
+      },
+      {
+        "key": "hideWhenReceiverMissing",
+        "type": "boolean",
+        "label": "Hide when the USB receiver is missing",
+        "defaultValue": true
+      },
+      {
+        "key": "refreshIntervalSec",
+        "type": "number",
+        "label": "Refresh interval when closed",
+        "description": "Seconds between battery checks while the panel is closed.",
+        "defaultValue": 5,
+        "min": 2,
+        "max": 60,
+        "step": 1
+      },
+      {
+        "key": "openRefreshIntervalSec",
+        "type": "number",
+        "label": "Refresh interval when open",
+        "description": "Seconds between battery checks while the panel is open.",
+        "defaultValue": 2,
+        "min": 1,
+        "max": 10,
+        "step": 1
+      }
+    ]
+  }
+}
