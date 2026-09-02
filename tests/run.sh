@@ -7,6 +7,9 @@ build_dir="${XDG_RUNTIME_DIR:-/tmp}/slovn-cetra-test.$$"
 trap 'rm -rf "$build_dir"' EXIT
 mkdir -p "$build_dir"
 
+python3 -m json.tool "$plugin_dir/manifest.json" >/dev/null
+test -z "$(find "$plugin_dir" -type l)"
+
 omarchy plugin validate "$plugin_dir"
 
 cc -O2 -Wall -Wextra -Werror \

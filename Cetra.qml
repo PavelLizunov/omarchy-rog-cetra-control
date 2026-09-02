@@ -525,7 +525,7 @@ Panel {
                 spacing: Style.space(2)
 
                 Text {
-                  text: root.micLive ? "Microphone Live (Включен)" : "Microphone Muted (Выключен)"
+                  text: root.micLive ? "Microphone Live" : "Microphone Muted"
                   color: !root.micLive
                     ? (root.bar ? root.bar.urgent : Color.urgent)
                     : root.foreground

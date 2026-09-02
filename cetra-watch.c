@@ -529,26 +529,24 @@ static int make_nonblocking(int fd) {
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-static const unsigned char query_schedule[] = {
-  0x07,
-  0x25,
-  0x07,
-  0x2b,
-  0x07,
-  0x2c,
-  0x07,
-  0x28,
-  0x07,
-  0x26,
-};
-#define NUM_QUERY_SCHEDULE (int)(sizeof(query_schedule)/sizeof(query_schedule[0]))
-
 static int owner(int server_fd) {
   struct device_state state = {
+    .receiver = false,
+    .connected = false,
     .left = -1,
     .right = -1,
     .case_level = -1,
+    .left_missing = 0,
+    .right_missing = 0,
     .mode = -1,
+    .anc_level = 3,
+    .anc_adaptive = false,
+    .voice_prompt = 1,
+    .proximity = 1,
+    .lighting = 0,
+    .call_context = false,
+    .tap_seq = 0,
+    .mic_live = true,
   };
   struct command_source owner_source = {.fd = STDIN_FILENO};
   struct command_source clients[MAX_CLIENTS];
@@ -636,11 +634,11 @@ static int owner(int server_fd) {
     }
 
     if (device && now >= next_query) {
-      if (!send_request(device, query_schedule[query_phase])) {
+      if (!send_request(device, query_phase == 0 ? 0x07 : 0x25)) {
         disconnect_receiver(&device, &state);
         next_open = now + 1000;
       } else {
-        query_phase = (query_phase + 1) % NUM_QUERY_SCHEDULE;
+        query_phase = (query_phase + 1) % 2;
         next_query = now + 500;
       }
     }
