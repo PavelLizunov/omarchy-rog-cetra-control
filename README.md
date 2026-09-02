@@ -1,7 +1,8 @@
 # ROG Cetra Control for Omarchy
 
 Shows left, right, and case battery levels for ROG Cetra True Wireless
-SpeedNova through its USB receiver, and switches Off, ANC, and Ambient modes.
+SpeedNova through its USB receiver, switches Off, ANC, and Ambient modes, and
+automatically activates the headset's built-in call microphone gesture.
 
 Supported receiver: `0b05:1ad3`.
 
@@ -16,6 +17,35 @@ The response fields are:
 Noise control uses the 64-byte HID Output Report `cc 41 08 00 00 MODE`, where
 `0` is Off, `1` is ANC, and `2` is Ambient. The selected mode is verified with
 the readback request `cc 12 25`.
+
+Call context uses the standard Telephony HID output report exposed by the
+headset itself:
+
+- `05 31`: call context active
+- `05 00`: media context active
+
+This activates the headset's native call controls. The right-earbud tap then
+toggles microphone mute inside the headset and plays its normal voice prompt.
+It does not mute PipeWire, PulseAudio, EasyEffects, or the ALSA mixer.
+
+The Telephony reports do not emulate a physical tap and do not play the
+`microphone off/on` voice prompt. No host command equivalent to the physical
+right-earbud tap has been confirmed, so the panel intentionally does not offer
+software `Live` or `Muted` buttons.
+
+The receiver has no confirmed absolute mute-state readback. A vendor packet
+`cc 70 00 00 00 01 01` was observed after some physical taps, but it was absent
+from another captured tap that played `microphone off`, and ASUS HAL 1.3.95.0
+does not parse its `0x70` payload. The panel therefore does not infer or display
+`Live`/`Muted`; the headset's own voice prompt is the authoritative state.
+See [RESEARCH.md](RESEARCH.md) for captures, HAL addresses, negative findings,
+and the remaining verification plan.
+
+The Omarchy widget automatically enables the headset's Telephony call context
+while Discord, Steam, Telegram, Zoom, a Chromium- or Firefox-based call, or
+another communication capture stream is using the microphone. Technical
+EasyEffects, `pw-record`, Voxtype, and recognition keepalive streams are ignored.
+Outside a call, the right-earbud tap remains a media gesture.
 
 ## Install
 
@@ -40,12 +70,18 @@ used once to document the receiver protocol.
 - Uses a symbolic SVG recolored to the active theme instead of fixed colors.
 - Uses a shared lock and short-lived cache so multiple monitors do not poll the
   same HID receiver concurrently.
+- Uses one long-lived `cetra-watch` owner for battery, ANC, and call context;
+  additional monitors connect through a private runtime socket.
 - Preserves the last valid values across transient USB read failures.
-- Exposes refresh and visibility settings through the Omarchy widget settings
+- Exposes display and visibility settings through the Omarchy widget settings
   schema.
 
 The `setup` script is intentionally manual. `omarchy plugin add` clones and
 validates third-party plugins but does not execute their installation scripts.
+The script refuses to replace generated helpers while the Omarchy lockscreen is
+active. Omarchy 4.0.2 can reload every plugin service after a local plugin file
+changes and strand the session lock; this is tracked upstream as
+[`omacom/omarchy#9441`](https://github.com/omacom/omarchy/issues/9441).
 
 ## Verify
 
@@ -54,12 +90,12 @@ validates third-party plugins but does not execute their installation scripts.
 ```
 
 The checks validate the Omarchy manifest, compile with warnings treated as
-errors, run the protocol parser self-test, and reject hard-coded display colors.
+errors, run protocol self-tests, and reject hard-coded display colors.
 
 For UI development without hardware, launch Omarchy Shell with a fixture:
 
 ```bash
-CETRA_STATUS_FIXTURE='{"status":"ok","receiver":true,"connected":true,"state":5,"left":91,"right":98,"case":100}' omarchy restart shell
+CETRA_STATUS_FIXTURE='{"status":"ok","receiver":true,"connected":true,"left":91,"right":98,"case":100,"mode":"anc","call_context":true}' omarchy restart shell
 ```
 
 ## Update
@@ -77,17 +113,22 @@ omarchy plugin remove io.github.pavellizunov.rog-cetra-control
 ```
 
 The plugin installs no system service and writes no persistent device data.
-The generated `bin/cetra-status` helper lives inside the plugin directory and
-is removed together with the plugin.
+The generated `bin/cetra-status` and `bin/cetra-watch` helpers live inside the
+plugin directory and are removed together with the plugin.
 
 ## Security and privacy
 
 - Reads only the USB HID device `0b05:1ad3`.
 - Sends status requests `cc 12 07` and `cc 12 25`.
 - Sends `cc 41 08` only when the user explicitly changes noise control.
+- Sends standard Telephony HID call-context reports while a real capture stream
+  is active.
 - Does not use the network.
-- Does not change firmware, audio routing, microphone, or unrelated headset settings.
+- Does not change firmware, audio routing, system microphone mute, or unrelated
+  headset settings.
 - Does not collect serial numbers or other identifiers.
+- Uses owner-only runtime files and a private Unix socket under
+  `$XDG_RUNTIME_DIR`.
 - `setup` may install `base-devel`, `hidapi`, and `pkgconf` through
   `omarchy pkg add` when they are missing.
 

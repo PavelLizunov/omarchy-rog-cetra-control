@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.0 - 2026-09-02
+
+- Add native call-context integration for the headset's right-earbud mute tap.
+- Preserve the headset's own muted/unmuted voice prompts.
+- Keep microphone state read-only: do not present software mute buttons or an
+  inferred `Live`/`Muted` state without a reliable absolute hardware readback.
+- Automatically switch between Telephony call controls and normal media gestures.
+- Keep a single reconnecting HID owner behind an atomic runtime lock, with
+  post-case Telephony restore and per-panel call-context aggregation.
+- Reject local helper installation while the Omarchy lockscreen is active to
+  avoid upstream hot-reload crash `omacom/omarchy#9441` on affected releases.
+- Detect Chromium, Firefox, Electron, and communication-role call capture while
+  excluding EasyEffects, `pw-record`, Voxtype, and recognition keepalives.
+- Document official ASUS HAL findings, raw capture evidence, ruled-out command
+  paths, and the remaining reverse-engineering plan.
+
 ## 1.3.0 - 2026-09-01
 
 - Rename the project to ROG Cetra Control.

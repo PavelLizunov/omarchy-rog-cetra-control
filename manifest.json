@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.pavellizunov.rog-cetra-control",
   "name": "ROG Cetra Control",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "author": "PavelLizunov",
   "license": "MIT",
-  "description": "Controls and status for ROG Cetra True Wireless SpeedNova through the USB receiver.",
+  "description": "Battery, noise control, and automatic native call gestures for ROG Cetra True Wireless SpeedNova.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,15 +14,13 @@
   },
   "barWidget": {
     "displayName": "ROG Cetra Control",
-    "description": "Battery status and hardware controls for ROG Cetra True Wireless SpeedNova.",
+    "description": "Battery status, noise control, and automatic native call gestures for ROG Cetra True Wireless SpeedNova.",
     "category": "Audio",
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
       "showPercentage": true,
-      "hideWhenReceiverMissing": true,
-      "refreshIntervalSec": 5,
-      "openRefreshIntervalSec": 2
+      "hideWhenReceiverMissing": true
     },
     "schema": [
       {
@@ -36,26 +34,6 @@
         "type": "boolean",
         "label": "Hide when the USB receiver is missing",
         "defaultValue": true
-      },
-      {
-        "key": "refreshIntervalSec",
-        "type": "number",
-        "label": "Refresh interval when closed",
-        "description": "Seconds between battery checks while the panel is closed.",
-        "defaultValue": 5,
-        "min": 2,
-        "max": 60,
-        "step": 1
-      },
-      {
-        "key": "openRefreshIntervalSec",
-        "type": "number",
-        "label": "Refresh interval when open",
-        "description": "Seconds between battery checks while the panel is open.",
-        "defaultValue": 2,
-        "min": 1,
-        "max": 10,
-        "step": 1
       }
     ]
   }

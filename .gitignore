@@ -1,3 +1,4 @@
 /bin/cetra-status
+/bin/cetra-watch
 *.o
 *.tmp

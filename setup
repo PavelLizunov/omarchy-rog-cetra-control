@@ -3,6 +3,29 @@
 set -euo pipefail
 
 plugin_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+helpers_changed=false
+
+ensure_shell_unlocked() {
+  local status
+  status="$(omarchy-shell lock status 2>/dev/null || true)"
+  status="${status//[[:space:]]/}"
+  if [[ "$status" == *'"locked":true'* || "$status" == *'"requested":true'* || "$status" == *'"secure":true'* ]]; then
+    printf '%s\n' "Refusing to update a local plugin while the Omarchy lockscreen is active." >&2
+    printf '%s\n' "Unlock the session first (Omarchy issue #9441)." >&2
+    exit 1
+  fi
+}
+
+install_if_changed() {
+  local source="$1"
+  local target="$2"
+  if [[ -e "$target" ]] && cmp -s "$source" "$target"; then return; fi
+  ensure_shell_unlocked
+  mv -f "$source" "$target"
+  helpers_changed=true
+}
+
+ensure_shell_unlocked
 
 omarchy plugin validate "$plugin_dir"
 
@@ -19,15 +42,27 @@ cc -O2 -Wall -Wextra \
   -o "$build_dir/cetra-status" \
   "$plugin_dir/cetra-status.c" \
   $(pkg-config --cflags --libs hidapi-hidraw)
+cc -O2 -Wall -Wextra \
+  -o "$build_dir/cetra-watch" \
+  "$plugin_dir/cetra-watch.c" \
+  $(pkg-config --cflags --libs hidapi-hidraw)
 chmod 755 "$build_dir/cetra-status"
+chmod 755 "$build_dir/cetra-watch"
 "$build_dir/cetra-status" --selftest >/dev/null
-mv -f "$build_dir/cetra-status" "$plugin_dir/bin/cetra-status"
+"$build_dir/cetra-watch" --selftest >/dev/null
+install_if_changed "$build_dir/cetra-status" "$plugin_dir/bin/cetra-status"
+install_if_changed "$build_dir/cetra-watch" "$plugin_dir/bin/cetra-watch"
+
+if $helpers_changed; then
+  while read -r pid; do
+    [[ "$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)" == "$plugin_dir/bin/cetra-watch" ]] && kill -TERM "$pid" 2>/dev/null || true
+  done < <(pgrep -x cetra-watch || true)
+fi
 
 if ! lsusb -d 0b05:1ad3 >/dev/null 2>&1; then
   printf '%s\n' "ROG Cetra SpeedNova receiver 0b05:1ad3 is not connected." >&2
 fi
 
 omarchy plugin validate "$plugin_dir"
-omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
 printf '%s\n' "ROG Cetra Control is ready."
 printf '%s\n' "Enable it with: omarchy plugin enable io.github.pavellizunov.rog-cetra-control --section right"
