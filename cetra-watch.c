@@ -28,8 +28,17 @@ struct device_state {
   int left;
   int right;
   int case_level;
+  int left_missing;
+  int right_missing;
   int mode;
+  int anc_level;
+  bool anc_adaptive;
+  int voice_prompt;
+  int proximity;
+  int lighting;
   bool call_context;
+  int tap_seq;
+  bool mic_live;
 };
 
 struct command_source {
@@ -70,6 +79,38 @@ static int parse_mode(const char *name) {
   return -1;
 }
 
+static const char *prompt_name(int val) {
+  if (val == 1) return "english";
+  if (val == 2) return "chinese";
+  if (val == 0) return "sound";
+  return "unknown";
+}
+
+static int parse_prompt(const char *name) {
+  if (strcmp(name, "english") == 0) return 1;
+  if (strcmp(name, "chinese") == 0) return 2;
+  if (strcmp(name, "sound") == 0 || strcmp(name, "beeps") == 0) return 0;
+  return -1;
+}
+
+static const char *lighting_name(int val) {
+  if (val == 0) return "off";
+  if (val == 1) return "static";
+  if (val == 2) return "breathing";
+  if (val == 3) return "strobing";
+  if (val == 4) return "cycle";
+  return "unknown";
+}
+
+static int parse_lighting(const char *name) {
+  if (strcmp(name, "off") == 0) return 0;
+  if (strcmp(name, "static") == 0) return 1;
+  if (strcmp(name, "breathing") == 0) return 2;
+  if (strcmp(name, "strobing") == 0) return 3;
+  if (strcmp(name, "cycle") == 0 || strcmp(name, "colorcycle") == 0) return 4;
+  return -1;
+}
+
 static void runtime_path(char *target, size_t size, const char *name) {
   const char *runtime = getenv("XDG_RUNTIME_DIR");
   if (!runtime || !*runtime) runtime = "/tmp";
@@ -105,6 +146,73 @@ static bool set_mode(hid_device *device, int mode) {
   return hid_send_output_report(device, report, sizeof(report)) == (int)sizeof(report);
 }
 
+static bool set_anc_level(hid_device *device, int level) {
+  unsigned char report[64] = {0};
+  report[0] = 0xcc;
+  report[1] = 0x41;
+  report[2] = 0x0c;
+  report[5] = (unsigned char)level;
+  return hid_send_output_report(device, report, sizeof(report)) == (int)sizeof(report);
+}
+
+static bool set_anc_adaptive(hid_device *device, bool enabled) {
+  unsigned char report[64] = {0};
+  report[0] = 0xcc;
+  report[1] = 0x41;
+  report[2] = 0x0d;
+  report[5] = enabled ? 1 : 0;
+  return hid_send_output_report(device, report, sizeof(report)) == (int)sizeof(report);
+}
+
+static bool set_voice_prompt(hid_device *device, int val) {
+  unsigned char report[64] = {0};
+  report[0] = 0xcc;
+  report[1] = 0x41;
+  report[2] = 0x0a;
+  report[5] = (unsigned char)val;
+  return hid_send_output_report(device, report, sizeof(report)) == (int)sizeof(report);
+}
+
+static bool set_proximity(hid_device *device, bool enabled) {
+  unsigned char report[64] = {0};
+  report[0] = 0xcc;
+  report[1] = 0x41;
+  report[2] = 0x09;
+  report[5] = enabled ? 1 : 0;
+  return hid_send_output_report(device, report, sizeof(report)) == (int)sizeof(report);
+}
+
+static bool set_lighting(hid_device *device, int effect, unsigned char r, unsigned char g, unsigned char b) {
+  unsigned char report1[64] = {0};
+  report1[0] = 0xcc;
+  report1[1] = 0x51;
+  report1[2] = 0x28;
+  if (effect > 0) {
+    report1[5] = 0x01;
+    report1[6] = (unsigned char)effect;
+    report1[7] = r;
+    report1[8] = g;
+    report1[9] = b;
+  } else {
+    report1[5] = 0x01;
+    report1[6] = 0x01;
+    report1[7] = 0x00;
+    report1[8] = 0x00;
+    report1[9] = 0x00;
+  }
+  if (hid_send_output_report(device, report1, sizeof(report1)) != (int)sizeof(report1)) return false;
+
+  report1[5] = 0x00;
+  if (hid_send_output_report(device, report1, sizeof(report1)) != (int)sizeof(report1)) return false;
+
+  unsigned char report2[64] = {0};
+  report2[0] = 0xcc;
+  report2[1] = 0x50;
+  report2[2] = 0x55;
+  if (hid_send_output_report(device, report2, sizeof(report2)) != (int)sizeof(report2)) return false;
+  return hid_send_output_report(device, report2, sizeof(report2)) == (int)sizeof(report2);
+}
+
 static bool set_call_context(hid_device *device, bool active) {
   unsigned char report[2] = {0x05, 0x00};
   if (active) report[1] = 0x31;
@@ -117,18 +225,47 @@ static void reset_receiver_state(struct device_state *state) {
   state->left = -1;
   state->right = -1;
   state->case_level = -1;
+  state->left_missing = 0;
+  state->right_missing = 0;
   state->mode = -1;
+  state->anc_level = 3;
+  state->anc_adaptive = false;
+  state->voice_prompt = 1;
+  state->proximity = 1;
+  state->lighting = 0;
 }
 
 static void apply_packet(struct device_state *state, const unsigned char *packet, int size) {
   if (size >= 9 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x07) {
     state->receiver = true;
-    state->left = packet[6] <= 100 ? packet[6] : -1;
-    state->right = packet[7] <= 100 ? packet[7] : -1;
+    if (packet[6] <= 100) {
+      state->left = packet[6];
+      state->left_missing = 0;
+    } else {
+      state->left_missing++;
+      if (state->left_missing >= 6) state->left = -1;
+    }
+    if (packet[7] <= 100) {
+      state->right = packet[7];
+      state->right_missing = 0;
+    } else {
+      state->right_missing++;
+      if (state->right_missing >= 6) state->right = -1;
+    }
     state->case_level = packet[8] <= 100 ? packet[8] : -1;
     state->connected = state->left >= 0 || state->right >= 0;
   } else if (size >= 6 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x25) {
     if (packet[5] <= 2) state->mode = packet[5];
+  } else if (size >= 6 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x2b) {
+    if (packet[5] >= 1 && packet[5] <= 3) state->anc_level = packet[5];
+  } else if (size >= 6 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x2c) {
+    state->anc_adaptive = packet[5] != 0;
+  } else if (size >= 6 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x28) {
+    if (packet[5] <= 2) state->voice_prompt = packet[5];
+  } else if (size >= 6 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x26) {
+    state->proximity = packet[5] != 0 ? 1 : 0;
+  } else if (size >= 7 && packet[0] == 0xcc && packet[1] == 0x70) {
+    state->tap_seq++;
   }
 }
 
@@ -137,19 +274,34 @@ static int selftest(void) {
     .left = -1,
     .right = -1,
     .case_level = -1,
+    .left_missing = 0,
+    .right_missing = 0,
     .mode = -1,
+    .anc_level = 3,
+    .anc_adaptive = false,
+    .voice_prompt = 1,
+    .proximity = 1,
+    .lighting = 0,
     .call_context = true,
+    .tap_seq = 0,
+    .mic_live = true,
   };
   const unsigned char battery[] = {0xcc, 0x12, 0x07, 0, 0, 5, 91, 98, 100};
   const unsigned char mode[] = {0xcc, 0x12, 0x25, 0, 0, 2};
+  const unsigned char anc_lvl[] = {0xcc, 0x12, 0x2b, 0, 0, 2};
+  const unsigned char anc_adp[] = {0xcc, 0x12, 0x2c, 0, 0, 1};
+  const unsigned char prompt[] = {0xcc, 0x12, 0x28, 0, 0, 1};
   apply_packet(&state, battery, sizeof(battery));
   apply_packet(&state, mode, sizeof(mode));
+  apply_packet(&state, anc_lvl, sizeof(anc_lvl));
+  apply_packet(&state, anc_adp, sizeof(anc_adp));
+  apply_packet(&state, prompt, sizeof(prompt));
   if (!state.receiver || !state.connected) return 1;
   if (state.left != 91 || state.right != 98 || state.case_level != 100) return 1;
-  if (state.mode != 2) return 1;
+  if (state.mode != 2 || state.anc_level != 2 || !state.anc_adaptive || state.voice_prompt != 1) return 1;
 
   const unsigned char in_case[] = {0xcc, 0x12, 0x07, 0, 0, 0, 255, 255, 100};
-  apply_packet(&state, in_case, sizeof(in_case));
+  for (int i = 0; i < 6; i++) apply_packet(&state, in_case, sizeof(in_case));
   if (state.connected) return 1;
 
   struct command_source owner_source = {.fd = STDIN_FILENO};
@@ -176,10 +328,19 @@ static void format_state(char *line, size_t size, const struct device_state *sta
   snprintf(case_level, sizeof(case_level), state->case_level >= 0 ? "%d" : "null", state->case_level);
   snprintf(line, size,
       "{\"status\":\"ok\",\"receiver\":%s,\"connected\":%s,"
-      "\"left\":%s,\"right\":%s,\"case\":%s,\"mode\":\"%s\",\"call_context\":%s}\n",
+      "\"left\":%s,\"right\":%s,\"case\":%s,\"mode\":\"%s\","
+      "\"anc_level\":%d,\"anc_adaptive\":%s,\"voice_prompt\":\"%s\","
+      "\"proximity\":%s,\"lighting\":\"%s\","
+      "\"call_context\":%s,\"tap_seq\":%d,\"mic_live\":%s}\n",
       state->receiver ? "true" : "false", state->connected ? "true" : "false",
       left, right, case_level, mode_name(state->mode),
-      state->call_context ? "true" : "false");
+      state->anc_level, state->anc_adaptive ? "true" : "false",
+      prompt_name(state->voice_prompt),
+      state->proximity ? "true" : "false",
+      lighting_name(state->lighting),
+      state->call_context ? "true" : "false",
+      state->tap_seq,
+      state->mic_live ? "true" : "false");
 }
 
 static void write_state_cache(const char *line) {
@@ -249,6 +410,35 @@ static bool handle_command(hid_device *device, struct device_state *state, struc
   } else if (strcmp(key, "call") == 0) {
     if (strcmp(value, "on") == 0) source->call_requested = true;
     else if (strcmp(value, "off") == 0) source->call_requested = false;
+  } else if (strcmp(key, "anc_level") == 0) {
+    int level = atoi(value);
+    if (level >= 1 && level <= 3 && device) {
+      if (!set_anc_level(device, level) || !send_request(device, 0x2b)) return false;
+    }
+  } else if (strcmp(key, "anc_adaptive") == 0) {
+    bool enabled = strcmp(value, "on") == 0 || strcmp(value, "true") == 0;
+    if (device) {
+      if (!set_anc_adaptive(device, enabled) || !send_request(device, 0x2c)) return false;
+    }
+  } else if (strcmp(key, "voice_prompt") == 0) {
+    int val = parse_prompt(value);
+    if (val >= 0 && device) {
+      if (!set_voice_prompt(device, val) || !send_request(device, 0x28)) return false;
+    }
+  } else if (strcmp(key, "proximity") == 0) {
+    bool enabled = strcmp(value, "on") == 0 || strcmp(value, "true") == 0;
+    if (device) {
+      if (!set_proximity(device, enabled) || !send_request(device, 0x26)) return false;
+    }
+  } else if (strcmp(key, "lighting") == 0) {
+    int effect = parse_lighting(value);
+    if (effect >= 0 && device) {
+      set_lighting(device, effect, 0xff, 0x00, 0x00);
+      state->lighting = effect;
+    }
+  } else if (strcmp(key, "mic_state") == 0) {
+    if (strcmp(value, "live") == 0) state->mic_live = true;
+    else if (strcmp(value, "muted") == 0) state->mic_live = false;
   }
   return true;
 }
@@ -338,6 +528,20 @@ static int make_nonblocking(int fd) {
   if (flags < 0) return -1;
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
+
+static const unsigned char query_schedule[] = {
+  0x07,
+  0x25,
+  0x07,
+  0x2b,
+  0x07,
+  0x2c,
+  0x07,
+  0x28,
+  0x07,
+  0x26,
+};
+#define NUM_QUERY_SCHEDULE (int)(sizeof(query_schedule)/sizeof(query_schedule[0]))
 
 static int owner(int server_fd) {
   struct device_state state = {
@@ -432,11 +636,11 @@ static int owner(int server_fd) {
     }
 
     if (device && now >= next_query) {
-      if (!send_request(device, query_phase == 0 ? 0x07 : 0x25)) {
+      if (!send_request(device, query_schedule[query_phase])) {
         disconnect_receiver(&device, &state);
         next_open = now + 1000;
       } else {
-        query_phase = (query_phase + 1) % 2;
+        query_phase = (query_phase + 1) % NUM_QUERY_SCHEDULE;
         next_query = now + 500;
       }
     }

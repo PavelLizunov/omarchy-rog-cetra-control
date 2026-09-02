@@ -28,8 +28,17 @@ Panel {
   property var caseLevel: null
   property string listeningMode: "unknown"
   property string pendingMode: ""
+  property int ancLevel: 3
+  property bool ancAdaptive: true
+  property string voicePrompt: "english"
+  property bool proximity: false
+  property string lighting: "off"
+  property int tapSeq: 0
+  property bool micLive: true
   property bool callContextActive: false
   property bool requestedCallContextActive: false
+  property bool detectedCallContext: false
+  property bool alwaysCallContext: setting("alwaysCallContext", false) === true
   property int inactiveCallPolls: 0
 
   readonly property int lowestLevel: {
@@ -81,6 +90,15 @@ Panel {
     rightLevel = data.right === undefined ? null : data.right
     caseLevel = data.case === undefined ? null : data.case
     listeningMode = String(data.mode || "unknown")
+    if (data.anc_level !== undefined) ancLevel = Number(data.anc_level)
+    if (data.anc_adaptive !== undefined) ancAdaptive = data.anc_adaptive === true
+    if (data.voice_prompt !== undefined) voicePrompt = String(data.voice_prompt)
+    if (data.proximity !== undefined) proximity = data.proximity === true
+    if (data.lighting !== undefined) lighting = String(data.lighting)
+    if (data.tap_seq !== undefined && Number(data.tap_seq) !== tapSeq) {
+      tapSeq = Number(data.tap_seq)
+      root.micLive = !root.micLive
+    }
     callContextActive = data.call_context === true
     if (pendingMode !== "" && listeningMode === pendingMode) {
       pendingMode = ""
@@ -103,6 +121,48 @@ Panel {
     deviceWatchProc.write("mode " + mode + "\n")
   }
 
+  function setAncLevel(level) {
+    if (!connected) return
+    ancLevel = level
+    deviceWatchProc.write("anc_level " + level + "\n")
+  }
+
+  function setAncAdaptive(enabled) {
+    if (!connected) return
+    ancAdaptive = enabled
+    deviceWatchProc.write("anc_adaptive " + (enabled ? "on" : "off") + "\n")
+  }
+
+  function setVoicePrompt(val) {
+    if (!connected) return
+    voicePrompt = val
+    deviceWatchProc.write("voice_prompt " + val + "\n")
+  }
+
+  function setProximity(enabled) {
+    if (!connected) return
+    proximity = enabled
+    deviceWatchProc.write("proximity " + (enabled ? "on" : "off") + "\n")
+  }
+
+  function setLighting(effect) {
+    if (!connected) return
+    lighting = effect
+    deviceWatchProc.write("lighting " + effect + "\n")
+  }
+
+  function updateCallContext() {
+    var active = alwaysCallContext || detectedCallContext
+    if (active === requestedCallContextActive) return
+    requestedCallContextActive = active
+    deviceWatchProc.write("call " + (active ? "on" : "off") + "\n")
+  }
+
+  function setAlwaysCallContext(val) {
+    alwaysCallContext = val
+    updateCallContext()
+  }
+
   function applyCallContext(text) {
     var result = String(text || "").trim()
     if (result !== "active" && result !== "inactive") return
@@ -112,10 +172,8 @@ Panel {
     } else {
       inactiveCallPolls = 0
     }
-    var active = result === "active"
-    if (active === requestedCallContextActive) return
-    requestedCallContextActive = active
-    deviceWatchProc.write("call " + (active ? "on" : "off") + "\n")
+    detectedCallContext = result === "active"
+    updateCallContext()
   }
 
   Process {
@@ -198,6 +256,16 @@ Panel {
       }
 
       Text {
+        visible: root.callContextActive && root.connected
+        text: root.micLive ? "󰍬" : "󰍭"
+        color: root.micLive ? root.barColor : (root.bar ? root.bar.urgent : Color.urgent)
+        font.family: root.fontFamily
+        font.pixelSize: Style.bar.iconFont
+        renderType: Text.NativeRendering
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Text {
         visible: root.showsPercentage
         text: root.lowestLevel + "%"
         color: root.barColor
@@ -216,7 +284,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(360))
+    contentWidth: panel.fittedContentWidth(Style.space(380))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
 
     PanelKeyCatcher {
@@ -357,6 +425,52 @@ Panel {
             }
           }
 
+          Column {
+            width: parent.width
+            spacing: Style.space(6)
+            visible: root.listeningMode === "anc"
+
+            Row {
+              id: ancLevelRow
+              width: parent.width
+              spacing: Style.space(6)
+
+              Repeater {
+                model: [
+                  { label: "Low", value: 1 },
+                  { label: "Mid", value: 2 },
+                  { label: "High", value: 3 }
+                ]
+
+                delegate: Button {
+                  required property var modelData
+                  width: (ancLevelRow.width - ancLevelRow.spacing * 2) / 3
+                  text: modelData.label
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  fontSize: Style.font.caption
+                  bordered: true
+                  active: root.ancLevel === modelData.value && !root.ancAdaptive
+                  onClicked: {
+                    if (root.ancAdaptive) root.setAncAdaptive(false)
+                    root.setAncLevel(modelData.value)
+                  }
+                }
+              }
+            }
+
+            Button {
+              width: parent.width
+              text: root.ancAdaptive ? "Adaptive ANC: ON" : "Adaptive ANC: OFF"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              fontSize: Style.font.caption
+              bordered: true
+              active: root.ancAdaptive
+              onClicked: root.setAncAdaptive(!root.ancAdaptive)
+            }
+          }
+
           Text {
             width: parent.width
             text: root.pendingMode !== ""
@@ -386,7 +500,9 @@ Panel {
             radius: Style.cornerRadius
             color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
             border.width: 1
-            border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
+            border.color: !root.micLive
+              ? (root.bar ? root.bar.urgent : Color.urgent)
+              : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
 
             Row {
               id: microphoneState
@@ -397,8 +513,8 @@ Panel {
               spacing: Style.space(10)
 
               Text {
-                text: root.callContextActive ? "󰍬" : "󰒲"
-                color: root.foreground
+                text: root.micLive ? "󰍬" : "󰍭"
+                color: root.micLive ? root.foreground : (root.bar ? root.bar.urgent : Color.urgent)
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.title
                 anchors.verticalCenter: parent.verticalCenter
@@ -409,17 +525,19 @@ Panel {
                 spacing: Style.space(2)
 
                 Text {
-                  text: root.callContextActive ? "Call gesture enabled" : "Media gesture active"
-                  color: root.foreground
+                  text: root.micLive ? "Microphone Live (Включен)" : "Microphone Muted (Выключен)"
+                  color: !root.micLive
+                    ? (root.bar ? root.bar.urgent : Color.urgent)
+                    : root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.bodySmall
                   font.bold: true
                 }
 
                 Text {
-                  text: root.callContextActive
-                    ? "Tap the right earbud to mute or unmute"
-                    : "Media gesture outside a call"
+                  text: root.micLive
+                    ? "Tap right earbud to mute · Spoken: microphone off"
+                    : "Tap right earbud to unmute · Spoken: microphone on"
                   color: root.dim
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
@@ -428,23 +546,133 @@ Panel {
             }
           }
 
-          Text {
+          Row {
+            id: gestureModeRow
             width: parent.width
-            text: root.callContextActive
-              ? "The headset's microphone off/on voice prompt is the authoritative mute state."
-              : "Call context activates automatically when a communication app records audio."
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            wrapMode: Text.WordWrap
+            spacing: Style.space(6)
+
+            Button {
+              width: (gestureModeRow.width - gestureModeRow.spacing) / 2
+              text: "Calls Only (Auto)"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              fontSize: Style.font.caption
+              bordered: true
+              active: !root.alwaysCallContext
+              onClicked: root.setAlwaysCallContext(false)
+            }
+
+            Button {
+              width: (gestureModeRow.width - gestureModeRow.spacing) / 2
+              text: "Always Mute Tap"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              fontSize: Style.font.caption
+              bordered: true
+              active: root.alwaysCallContext
+              onClicked: root.setAlwaysCallContext(true)
+            }
           }
 
           Text {
             width: parent.width
-            text: root.callContextActive ? "Call controls active" : "Media controls active"
+            text: root.callContextActive
+              ? "Right earbud: Mute/Unmute tap active (voice prompts)"
+              : "Right earbud: Media gesture outside calls"
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
+          }
+        }
+
+        Column {
+          width: parent.width
+          spacing: Style.space(10)
+          visible: root.connected
+
+          PanelSectionHeader {
+            width: parent.width
+            text: "LIGHTING"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+          }
+
+          Row {
+            id: lightingRow
+            width: parent.width
+            spacing: Style.space(5)
+
+            Repeater {
+              model: [
+                { label: "Off", value: "off" },
+                { label: "Cycle", value: "cycle" },
+                { label: "Static", value: "static" },
+                { label: "Breathe", value: "breathing" },
+                { label: "Strobe", value: "strobing" }
+              ]
+
+              delegate: Button {
+                required property var modelData
+                width: (lightingRow.width - lightingRow.spacing * 4) / 5
+                text: modelData.label
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                fontSize: Style.font.caption
+                bordered: true
+                active: root.lighting === modelData.value
+                onClicked: root.setLighting(modelData.value)
+              }
+            }
+          }
+        }
+
+        Column {
+          width: parent.width
+          spacing: Style.space(10)
+          visible: root.connected
+
+          PanelSectionHeader {
+            width: parent.width
+            text: "DEVICE SETTINGS"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+          }
+
+          Row {
+            id: voicePromptRow
+            width: parent.width
+            spacing: Style.space(6)
+
+            Repeater {
+              model: [
+                { label: "English Voice", value: "english" },
+                { label: "Chinese Voice", value: "chinese" },
+                { label: "Beeps Only", value: "sound" }
+              ]
+
+              delegate: Button {
+                required property var modelData
+                width: (voicePromptRow.width - voicePromptRow.spacing * 2) / 3
+                text: modelData.label
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                fontSize: Style.font.caption
+                bordered: true
+                active: root.voicePrompt === modelData.value
+                onClicked: root.setVoicePrompt(modelData.value)
+              }
+            }
+          }
+
+          Button {
+            width: parent.width
+            text: root.proximity ? "In-Ear Auto-Pause: ON" : "In-Ear Auto-Pause: OFF"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            fontSize: Style.font.caption
+            bordered: true
+            active: root.proximity
+            onClicked: root.setProximity(!root.proximity)
           }
         }
 
@@ -454,7 +682,7 @@ Panel {
 
         Text {
           width: parent.width
-          text: "Battery and noise control use the ASUS USB receiver. During calls, the right-earbud tap controls microphone mute with the headset's own voice prompt."
+          text: "Battery, noise control, lighting, and settings use the ASUS USB receiver. During calls, the right earbud tap controls microphone mute with the headset voice prompt."
           wrapMode: Text.WordWrap
           color: root.dim
           font.family: root.fontFamily

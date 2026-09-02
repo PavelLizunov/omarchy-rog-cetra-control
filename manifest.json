@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.pavellizunov.rog-cetra-control",
   "name": "ROG Cetra Control",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "author": "PavelLizunov",
   "license": "MIT",
-  "description": "Battery, noise control, and automatic native call gestures for ROG Cetra True Wireless SpeedNova.",
+  "description": "Battery, noise control, lighting, and automatic native call gestures for ROG Cetra True Wireless SpeedNova.",
   "kinds": [
     "bar-widget"
   ],

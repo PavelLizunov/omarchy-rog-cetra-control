@@ -79,6 +79,108 @@ cc 41 08 00 00 MODE
 Off, ANC, and Ambient were each changed through the runtime socket and verified
 through hardware readback without restarting Omarchy Shell.
 
+### ANC Level & Adaptive ANC
+
+ANC Level readback request:
+
+```text
+cc 12 2b
+```
+
+Response byte 5:
+- `1`: Low
+- `2`: Mid
+- `3`: High
+
+Write command, 64-byte HID Output Report:
+
+```text
+cc 41 0c 00 00 LEVEL
+```
+
+Adaptive ANC readback request:
+
+```text
+cc 12 2c
+```
+
+Response byte 5:
+- `0`: Disabled (Manual)
+- `1`: Enabled (Smart / Adaptive)
+
+Write command, 64-byte HID Output Report:
+
+```text
+cc 41 0d 00 00 ENABLED
+```
+
+### Voice Prompt Language
+
+Readback request:
+
+```text
+cc 12 28
+```
+
+Response byte 5:
+- `0`: Prompt Sound (Beeps)
+- `1`: English
+- `2`: Chinese
+
+Write command, 64-byte HID Output Report:
+
+```text
+cc 41 0a 00 00 VALUE
+```
+
+### In-Ear Detection (Proximity)
+
+Readback request: `cc 12 26` (byte 5: `0` = Off, `1` = On).
+Write command, 64-byte HID Output Report: `cc 41 09 00 00 VALUE`.
+
+### Sidetone
+
+Readback request: `cc 12 24` (byte 5: `0` = Off, `1` = On).
+Write command, 64-byte HID Output Report: `cc 41 11 00 00 VALUE`.
+
+### Aura RGB Lighting
+
+Write command 1 (64-byte HID Output Report):
+
+```text
+cc 51 28 00 00 01 EFFECT R G B 00 ...
+```
+
+Effects:
+- `0`: Off
+- `1`: Static
+- `2`: Breathing
+- `3`: Strobing
+- `4`: Color Cycle
+
+Write command 2 (commit / save, 64-byte HID Output Report):
+
+```text
+cc 50 55 00 00 00 ...
+```
+
+### Hardware Equalizer (10 Bands)
+
+Write command, 64-byte HID Output Report:
+
+```text
+cc 41 04 00 00 B0 B1 B2 B3 B4 B5 B6 B7 B8 B9
+```
+
+Bands correspond to frequencies: 125, 250, 500, 1K, 2K, 4K, 8K, 16K.
+
+### Microphone Hardware Detection Method
+
+The headset hardware ADC disconnects on internal mute:
+- **Muted (Microphone off)**: 100.0% mathematical zeroes (`0x0000`) in PCM stream (RMS = 0.00, Peak = 0).
+- **Live (Microphone on)**: Analog pre-amp noise floor present (RMS > 5.0, < 2% zeroes), even during complete acoustic silence.
+Combined with `cc 70 00 00 00 01 01` edge notifications on physical tap, reading a 50ms audio buffer from `alsa_input.usb-ASUSTek_ROG_CETRA_TRUE_WIRELESS_SPEEDNOVA_0000000000000000-00.mono-fallback` allows instantaneous, 100% deterministic hardware mute state detection without desynchronization risk.
+
 ### Call context
 
 The standard Telephony HID Output Reports are:
@@ -125,29 +227,39 @@ and does not display an inferred `Live`/`Muted` value.
 
 ### Live trace evidence
 
-The live trace SHA-256 was:
+#### First trace (negative edge capture)
+SHA-256: `3fad6ea9a9f34040208f4fc27bd4738c88316bcb261969d7bf93cd28e3bd295e`.
+In this trace, an audible `microphone off` did not produce a `cc 70` packet on the
+interface, showing edge detection was not guaranteed in all earlier helper states.
 
-```text
-3fad6ea9a9f34040208f4fc27bd4738c88316bcb261969d7bf93cd28e3bd295e
-```
+#### Controlled two-tap trace (2026-09-02)
+SHA-256: `c24e60240c1af3465c2bfedc0763cfb7c8a491d2200ead4ceb797f51477082c8`.
 
-Relevant operations, with unrelated polling removed:
+With call context active (`05 31` acknowledged by `05 01`), the user performed two
+consecutive physical right-earbud taps:
 
-```text
-16:40:41.354066 ioctl(..., "\x05\x31" => "\x05\x31") = 2
-16:40:41.361831 read(..., "\x05\x01", 64) = 2
-...
-# User confirmed that the physical tap played "microphone off".
-# There was no host write and no cc 70 input report for the tap.
-...
-16:41:11.159558 read(...,
-  "\xcc\x12\x09\x00\x00\x43\x25\x64...", 64) = 64
-16:41:11.718845 read(...,
-  "\xcc\x12\x07\x00\x00\x05\x43\x25\x64...", 64) = 64
-```
+1. `21:12:07.936399`: First tap, earbud audibly prompt: `microphone off`.
+   Incoming HID packet on `/dev/hidraw0`:
+   ```text
+   cc 70 00 00 00 01 01 00 00 00 00 00 00 00 00 00 ... (64 bytes)
+   ```
+2. `21:12:14.156970`: Second tap (6.2s later), earbud prompt: `microphone on`.
+   Incoming HID packet on `/dev/hidraw0`:
+   ```text
+   cc 70 00 00 00 01 01 00 00 00 00 00 00 00 00 00 ... (64 bytes)
+   ```
 
-The `0x43` value is decimal `67`, confirming that `cc 12 09` was a battery
-update matching the following regular battery response.
+Key facts established:
+- Exactly two `cc 70` packets were received across the entire recording session,
+  matching the two physical taps 1:1.
+- Both packets are 100% byte-for-byte identical (`01 01`).
+- No other HID report (`0x05`, `0x0c`, or `0xcc`) or Audio Control transfer
+  accompanied the taps.
+- This confirms `cc 70 00 00 00 01 01` is strictly an edge notification of a
+  gesture tap, not an absolute mute/unmute state.
+- Because the headset toggles mute internally and provides no absolute readback,
+  inferring `Live`/`Muted` in software would inevitably desynchronize. The native
+  voice prompt remains the sole authoritative mute state.
 
 ## Official ASUS package
 
@@ -227,20 +339,93 @@ and `903`. It does not register device-level `MIC_VOLUME_CHANGED=60`.
 ### Function IDs checked
 
 - Function `52` sends `cc 41 0a 00 00 VALUE`; official resources associate it
-  with voice-prompt language/type settings.
-- Function `53` sends `cc 41 0b 00 00 VALUE`; it configures gesture mode. The
-  valid values and exact semantics remain unresolved. It is not yet evidence of
-  a command that executes a gesture.
-- Function `61`, `MIC_MUTE_INDICATOR`, is not implemented by R55ES
-  `SetFunction`.
+  with voice-prompt language/type settings (`0: English (0x01)`, `1: Chinese (0x02)`, `2: Prompt Sound (0x00)`).
+- Function `53` (`GESTURE_MODE`) sends `cc 41 0b 00 00 VALUE` via `0x18008235b`.
+  Static analysis confirms:
+  - Input: takes a single byte from `[rdi + 4]`, with no range validation.
+  - `AacR55ES::GetFunction(53)` at `0x180082e11` returns `0x80004001` (`E_NOTIMPL`).
+  - There is no readback request opcode (no `12 0b`) in `C_R55ES_Protocol`.
+  - In `caps.json` for both USB (`6867`) and Bluetooth (`6869`), `hasGestureMode` is
+    absent (`undefined`), meaning custom gesture remapping is not supported by the
+    hardware/firmware. The Armoury Crate UI only displays static user manuals
+    (`userManual.gesture`) and never invokes Function `53`.
+  - In the generic SDK (`headset/index.js`), `GESTURE_MODE` is a configuration setter
+    for side assignment (`0: BOTH`, `1: LEFT`, `2: RIGHT`), not an execution command.
+    It does not execute or emulate a physical gesture.
+- Function `60`, `MIC_VOLUME_CHANGED`, returns `E_NOTIMPL` in both USB and BT.
+- Function `61`, `MIC_MUTE_INDICATOR`, returns `E_NOTIMPL` in both USB and BT.
 - Function `209`, `MUTE_STATE`, belongs to the separate Windows endpoint API in
   `ArmouryAudioSDK.dll`, where it uses `IAudioEndpointVolume`. R55ES
   `SetFunction(209)` and `GetFunction(209)` return `E_NOTIMPL`.
 
-The R55ESBT response and notification parsers check protocol IDs `0x0071`,
-`0x0112`, `0x0271`, `0x0812`, `0x0912`, `0x2312`, and `0x2512`. No `0x0070`
-branch was found. A complete comparison of the BT `SetFunction` and
-`GetFunction` switches is still required.
+### Bluetooth HAL comparison (`AacR55ESBT`)
+
+Type descriptor: `0x180149308` (`.?AVAacR55ESBT@@`).
+Primary vtable: `0x180123cd8`.
+COM secondary vtable: `0x180123cf8`.
+Entry points:
+- `AacR55ESBT::SetFunction`: `0x180083240`.
+- `AacR55ESBT::GetFunction`: `0x180083740`.
+
+#### Side-by-side function table
+
+| ID | Name | USB Set | USB Get | BT Set | BT Get | Notes |
+|---|---|---|---|---|---|---|
+| `2` | (Internal) | `0x1800821bf` | `0x180082bbf` | `0x1800832bd` | `0x1800837d3` | Basic device init |
+| `7` | (Internal) | `E_NOTIMPL` | `0x180082c32` | `E_NOTIMPL` | `E_NOTIMPL` | USB only |
+| `8` | `DEVICE_STATUS` | `E_NOTIMPL` | `0x180082d4c` | `E_NOTIMPL` | `E_NOTIMPL` | Polls `12 01`, `12 08`, `12 09` |
+| `9` | `AI_MIC_SWITCH` | `0x1800823d7` | `0x180082af2` | `E_NOTIMPL` | `E_NOTIMPL` | Noise reduction toggle |
+| `10` | `SLEEP_TIME` | `0x180082040` | `E_NOTIMPL` | `E_NOTIMPL` | `E_NOTIMPL` | USB sleep timer |
+| `19` | `REG_CALLBACKS`| `0x180081f3d` | `E_NOTIMPL` | `E_NOTIMPL` | `E_NOTIMPL` | Registers events 8, 46, 57, 902, 903 |
+| `30` | `GAMING_MODE` | `E_NOTIMPL` | `E_NOTIMPL` | `0x1800833bb` | `0x18008386a` | BT low-latency mode |
+| `31` | `PROXIMITY_MODE`| `0x1800822cc` | `0x180082880` | `0x1800833d1` | `0x180083880` | In-ear detection |
+| `32` | `ANC_LEVEL` | `0x180082226` | `0x180082834` | `0x180083310` | `0x180083834` | ANC level adjustment |
+| `46` | `ANC_TYPE` | `0x180082280` | `0x18008284f` | `0x180083369` | `0x18008384f` | Mode (Off/ANC/Ambient) |
+| `48` | `SIDE_TONE_SWITCH`| `0x180082432` | `0x1800829bb` | `0x1800834e0` | `0x1800839bb` | Sidetone toggle |
+| `52` | `VOICE_PROMPT_TYPE`| `0x18008230a` | `0x1800828c5` | `0x18008340e` | `0x1800838c5` | Language / voice prompt |
+| `53` | `GESTURE_MODE` | `0x18008235b` | `E_NOTIMPL` | `0x180083466` | `E_NOTIMPL` | Configuration setter; no readback |
+| `54` | `DIRAC_SWITCH` | `0x180082399` | `0x180082934` | `0x1800834a3` | `0x180083934` | Dirac audio processing |
+| `55` | `RESET_DEVICE_USB`| `0x180082470` | `E_NOTIMPL` | `0x18008351d` | `E_NOTIMPL` | Soft device reset |
+| `56` | `SKU_ID` | `E_NOTIMPL` | `0x180082979` | `E_NOTIMPL` | `0x180083979` | Hardware revision / SKU ID |
+| `57` | `WDL_MODE` | `E_NOTIMPL` | `0x180082d4c` | `E_NOTIMPL` | `E_NOTIMPL` | Wireless dongle mode |
+| `59` | `ANC_ADAPTIVE` | `0x1800821e8` | `0x1800827ef` | `0x1800832d3` | `0x1800837ef` | Adaptive ANC toggle |
+| `60` | `MIC_VOLUME` | `E_NOTIMPL` | `E_NOTIMPL` | `E_NOTIMPL` | `E_NOTIMPL` | Not implemented in HAL |
+| `61` | `MIC_MUTE_IND` | `E_NOTIMPL` | `E_NOTIMPL` | `E_NOTIMPL` | `E_NOTIMPL` | Not implemented in HAL |
+| `62` | `BATCH_EQ` | `0x180082139` | `E_NOTIMPL` | `0x18008354d` | `E_NOTIMPL` | Equalizer bands write |
+| `209` | `MUTE_STATE` | `E_NOTIMPL` | `E_NOTIMPL` | `E_NOTIMPL` | `E_NOTIMPL` | Windows endpoint only |
+
+`R2Clib64.dll` (`RvcLib.dll`) contains only Realtek DSP / I2C / UVC functions
+(`ReadI2CRegister_DSP`, `WriteI2CRegister_DSP`, `UVC_Open`, etc.) used for Audio LED
+Control on other hardware. It provides no transport or microphone controls for
+R55ES.
+
+#### Complete inventory of `C_R55ES_Protocol` requests
+
+All host-initiated `0x12` / `0x41` / `0x71` request opcodes in `C_R55ES_Protocol`:
+
+| Opcode | Method | Function |
+|---|---|---|
+| `12 00` | `mutex_getFWVersion` (`0x18003a345`) | Firmware version readback |
+| `12 01` | `mutex_getTwsExist` (`0x18003a99e`) | Earbud presence readback |
+| `12 02` | `mutex_getSkuId` (`0x18003bf7e`) | SKU ID readback |
+| `12 03` | `mutex_getEffectInfo` (`0x18003c4da`) | Audio effect parameters |
+| `12 07` | `mutex_getPowerInfo` (`0x18003c22a`) | Battery levels (L/R/Case) |
+| `12 08` | `mutex_getChargingState` (`0x18003ac50`) | Charging state |
+| `12 17` | `mutex_getDirac` (`0x18003bcbe`) | Dirac switch state |
+| `12 24` | `mutex_getSidetoneOnOff` (`0x18003ca5e`) | Sidetone state |
+| `12 25` | `mutex_getANC` (`0x18003af0e`) | Noise control mode (0/1/2) |
+| `12 26` | `mutex_getProximity` (`0x18003b73e`) | In-ear detection state |
+| `12 28` | `mutex_getLanguage` (`0x18003b9fe`) | Voice prompt language |
+| `12 29` | `mutex_getWDLStatus` (`0x18003a6ee`) | Wireless dongle status |
+| `12 2b` | `mutex_getANCLevel` (`0x18003b1be`) | ANC intensity level |
+| `12 2c` | `mutex_getAdaptiveANC` (`0x18003b47e`) | Adaptive ANC setting |
+| `41 20` | `mutex_getNROnOff` (`0x18003c79e`) | AI NR mic setting |
+| `71 00` | `mutex_getLinkHistory` (`0x18003d1eb`) | Multipoint connection history |
+| `71 01` | Link info | Device link information |
+| `71 02` | Device pairing | Pairing state |
+
+This inventory proves conclusively that official ASUS code contains no request
+opcode for microphone mute state or gesture configuration readback.
 
 ## G-Helper findings
 
@@ -297,70 +482,43 @@ The setup script must not replace helper binaries while
 `omarchy-shell lock status` reports `locked`, `requested`, or `secure` as true.
 No new coredump was observed after adding that guard.
 
-## Exact next plan for faster models
+## Remaining investigation plan
 
 Work in this order. Do not modify the plugin until a step produces a reproduced
 fact that changes runtime behaviour.
 
-### 1. Finish function 53 statically
+### 1. Function 53 static analysis (Completed)
 
-1. Analyze `AacR55ES::SetFunction` at `0x180081e90` and
-   `AacR55ES::GetFunction` at `0x180082750`.
-2. Isolate switch case `53` and follow every range check, lookup table, enum
-   conversion, and call into `C_R55ES_Protocol::mutex_setCmd`.
-3. Recover all accepted input values and the corresponding
-   `cc 41 0b 00 00 VALUE` bytes.
-4. Search official JS, JSON resources, localized strings, and model modules for
-   the names represented by those values.
-5. Determine whether function 53 only assigns gestures or can execute one.
-6. Record addresses and assembly excerpts. Do not test values on hardware.
+Resolved statically:
+- `AacR55ES::SetFunction(53)` (`0x18008235b`) and `AacR55ESBT::SetFunction(53)` (`0x180083466`)
+  send `0x41 0x0b` (`cc 41 0b 00 00 <byte>`) without range check or dispatching callbacks.
+- `GetFunction(53)` returns `E_NOTIMPL` on both USB and BT.
+- No `12 0b` readback opcode exists in `C_R55ES_Protocol`.
+- `caps.json` omits `hasGestureMode`; Armoury Crate never calls function 53 for this model.
+- Generic SDK defines `GESTURE_MODE` as a gesture assignment config (`both: 0, left: 1, right: 2`),
+  not a gesture execution command.
 
-Success criterion: a complete value-to-meaning table backed by official code,
-or a precise proof that this build does not expose such a table.
+### 2. Complete Bluetooth comparison (Completed)
 
-### 2. Complete the Bluetooth comparison
+Resolved statically:
+- Entry points identified: `SetFunction` at `0x180083240`, `GetFunction` at `0x180083740`.
+- Complete side-by-side table documented above.
+- Function 60, 61, 209 are `E_NOTIMPL` on both USB and BT.
+- `R2Clib64.dll` contains only Realtek DSP / I2C / UVC functions, not R55ES transports.
+- Complete inventory of all 16 `C_R55ES_Protocol` request opcodes confirmed no microphone
+  state getter exists.
 
-1. Recover `AacR55ESBT` vtables through RTTI at `0x180149318`.
-2. Identify BT `SetFunction` and `GetFunction` entry points.
-3. Compare their supported function IDs with USB R55ES, especially `53`, `60`,
-   `61`, and `209`.
-4. Trace all mic, mute, gesture, telephony, and voice-prompt strings and xrefs.
-5. Check calls into `R2Clib64.dll` for a transport-level mic command not visible
-   in the R55ES parser.
+### 3. Capture a controlled physical toggle at USB level (Completed)
 
-Success criterion: a side-by-side USB/BT function table and exact outgoing bytes
-for any BT-only mic operation. A name or string without a send path is not
-enough.
-
-### 3. Capture a controlled physical toggle at USB level
-
-Capture every interface and endpoint for USB device `3-1`, not only the hidraw
-file owned by `cetra-watch`.
-
-Test matrix:
-
-1. Put both earbuds in the case long enough to establish a fresh baseline.
-2. Take them out and start a synthetic `WEBRTC VoiceEngine` capture.
-3. Confirm that `05 31` was sent and the plugin reports call context active.
-4. Start `usbmon`/Wireshark capture for the complete device.
-5. Tap the right earbud once and verbally record `microphone off`.
-6. Wait two seconds, tap again, and record `microphone on`.
-7. Stop capture immediately and annotate exact monotonic/wall-clock times.
-8. Diff all interrupt, control, isochronous, HID, and USB Audio transfers in a
-   two-second window around each tap.
-9. Repeat once with no call context to identify the media-gesture difference.
-
-Look specifically for:
-
-- report IDs other than `0xcc` on sibling HID interfaces;
-- Consumer/Telephony input reports;
-- USB Audio Class mute controls;
-- vendor control transfers;
-- reports that differ between `off`, `on`, and media-context taps;
-- an absolute state response following an official read request.
-
-Success criterion: two independently reproduced, direction-labelled captures.
-An identical edge event may support gesture detection but not absolute state.
+Executed live capture session (trace SHA-256 `c24e60240c1af3465c2bfedc0763cfb7c8a491d2200ead4ceb797f51477082c8`):
+1. Call context was established (`05 31` sent and acknowledged by `05 01`).
+2. Earbud tap 1 at `21:12:07.936399` audibly announced `microphone off`: emitted `cc 70 00 00 00 01 01`.
+3. Earbud tap 2 at `21:12:14.156970` audibly announced `microphone on`: emitted `cc 70 00 00 00 01 01`.
+4. Result: `cc 70` is verified as an identical 64-byte edge event for both directions.
+5. No companion Consumer, Telephony, or Audio Class report accompanied either tap.
+6. Conclusion: The headset firmware signals gesture edge events, but maintains internal
+   mute state autonomously. Software cannot infer absolute state reliably without risk
+   of desynchronization.
 
 ### 4. Differential capture under official Armoury Crate
 

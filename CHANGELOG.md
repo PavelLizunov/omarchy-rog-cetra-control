@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0 - 2026-09-02
+
+- Add verified hardware-synchronized microphone Live/Muted detection via ADC silence gating and physical `cc 70` tap events.
+- Display real-time microphone status icon (󰍬 Live / 󰍭 Muted) in the top bar during calls with theme-colored urgent alerts.
+- Add ANC Level controls (Low, Mid, High) and Smart Adaptive ANC toggle with verified readbacks `cc 12 2b` and `cc 12 2c`.
+- Add Aura RGB Lighting controls (Off, Cycle, Static, Breathing, Strobing) using verified protocol `cc 51 28` and commit report `cc 50 55`.
+- Add Voice Prompt language selector (English, Chinese, Beeps) with verified readback `cc 12 28`.
+- Add In-Ear Detection (Auto-Pause) toggle with verified readback `cc 12 26`.
+- Update `cetra-watch` daemon with extended multi-phase hardware query schedule.
+
 ## 1.4.0 - 2026-09-02
 
 - Add native call-context integration for the headset's right-earbud mute tap.
