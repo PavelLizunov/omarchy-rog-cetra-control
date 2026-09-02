@@ -20,7 +20,8 @@
     "defaultSection": "right",
     "defaults": {
       "showPercentage": true,
-      "hideWhenReceiverMissing": true
+      "hideWhenReceiverMissing": true,
+      "alwaysCallContext": false
     },
     "schema": [
       {
@@ -34,6 +35,12 @@
         "type": "boolean",
         "label": "Hide when the USB receiver is missing",
         "defaultValue": true
+      },
+      {
+        "key": "alwaysCallContext",
+        "type": "boolean",
+        "label": "Always keep call controls active",
+        "defaultValue": false
       }
     ]
   }
