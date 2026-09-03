@@ -50,9 +50,9 @@ Panel {
 
   readonly property bool showsPercentage: showPercentage && connected && lowestLevel >= 0 && !button.vertical
   readonly property var modeOptions: [
-    { value: "off", label: "Off", shortcut: "O" },
-    { value: "anc", label: "ANC", shortcut: "N" },
-    { value: "ambient", label: "Ambient", shortcut: "A" }
+    { value: "off", label: "Off", icon: "󰟢", shortcut: "O" },
+    { value: "anc", label: "ANC", icon: "󰞀", shortcut: "N" },
+    { value: "ambient", label: "Ambient", icon: "󰖟", shortcut: "A" }
   ]
   readonly property string statusLabel: {
     if (deviceStatus === "helper-missing") return "Device helper is not installed"
@@ -346,9 +346,9 @@ Panel {
 
             Repeater {
               model: [
-                { label: "LEFT", value: root.leftLevel },
-                { label: "RIGHT", value: root.rightLevel },
-                { label: "CASE", value: root.caseLevel }
+                { label: "LEFT", value: root.leftLevel, icon: "󰋋" },
+                { label: "RIGHT", value: root.rightLevel, icon: "󰋋" },
+                { label: "CASE", value: root.caseLevel, icon: "󰂄" }
               ]
 
               delegate: Rectangle {
@@ -365,14 +365,25 @@ Panel {
                   anchors.centerIn: parent
                   spacing: Style.space(3)
 
-                  Text {
+                  Row {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: modelData.label
-                    color: root.dim
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    font.bold: true
-                    font.letterSpacing: 1.0
+                    spacing: Style.space(4)
+
+                    Text {
+                      text: modelData.icon
+                      color: root.dim
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                    }
+
+                    Text {
+                      text: modelData.label
+                      color: root.dim
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      font.bold: true
+                      font.letterSpacing: 1.0
+                    }
                   }
 
                   Text {
@@ -413,7 +424,7 @@ Panel {
                 required property var modelData
                 width: (modeRow.width - modeRow.spacing * 2) / 3
                 text: modelData.label
-                iconText: modelData.shortcut
+                iconText: modelData.icon
                 foreground: root.foreground
                 fontFamily: root.fontFamily
                 fontSize: Style.font.bodySmall
@@ -459,15 +470,46 @@ Panel {
               }
             }
 
-            Button {
+            Rectangle {
               width: parent.width
-              text: root.ancAdaptive ? "Adaptive ANC: ON" : "Adaptive ANC: OFF"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              fontSize: Style.font.caption
-              bordered: true
-              active: root.ancAdaptive
-              onClicked: root.setAncAdaptive(!root.ancAdaptive)
+              height: Style.space(36)
+              radius: Style.cornerRadius
+              color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, adaptiveArea.containsMouse ? 0.09 : 0.05)
+              border.width: 1
+              border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
+
+            Row {
+              anchors.fill: parent
+              anchors.leftMargin: Style.space(12)
+              anchors.rightMargin: Style.space(10)
+              spacing: Style.space(8)
+
+              Text {
+                text: "󰚥  Smart Adaptive ANC"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - adaptiveSwitch.width - parent.spacing
+                elide: Text.ElideRight
+              }
+
+                ToggleSwitch {
+                  id: adaptiveSwitch
+                  anchors.verticalCenter: parent.verticalCenter
+                  checked: root.ancAdaptive
+                  onToggled: root.setAncAdaptive(!root.ancAdaptive)
+                }
+              }
+
+              MouseArea {
+                id: adaptiveArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.setAncAdaptive(!root.ancAdaptive)
+              }
             }
           }
 
@@ -500,7 +542,7 @@ Panel {
             radius: Style.cornerRadius
             color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
             border.width: 1
-            border.color: !root.micLive
+            border.color: root.callContextActive && !root.micLive
               ? (root.bar ? root.bar.urgent : Color.urgent)
               : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
 
@@ -508,25 +550,29 @@ Panel {
               id: microphoneState
               anchors.left: parent.left
               anchors.right: parent.right
-              anchors.margins: Style.space(10)
+              anchors.margins: Style.space(12)
               anchors.verticalCenter: parent.verticalCenter
-              spacing: Style.space(10)
+              spacing: Style.space(12)
 
               Text {
-                text: root.micLive ? "󰍬" : "󰍭"
-                color: root.micLive ? root.foreground : (root.bar ? root.bar.urgent : Color.urgent)
+                text: root.callContextActive ? (root.micLive ? "󰍬" : "󰍭") : "󰋋"
+                color: root.callContextActive
+                  ? (root.micLive ? root.foreground : (root.bar ? root.bar.urgent : Color.urgent))
+                  : root.dim
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.title
+                font.pixelSize: Style.font.display
                 anchors.verticalCenter: parent.verticalCenter
               }
 
               Column {
                 width: parent.width - parent.children[0].width - parent.spacing
-                spacing: Style.space(2)
+                spacing: Style.space(3)
 
                 Text {
-                  text: root.micLive ? "Microphone Live" : "Microphone Muted"
-                  color: !root.micLive
+                  text: root.callContextActive
+                    ? (root.micLive ? "Microphone Live" : "Microphone Muted")
+                    : "Media Gesture Active"
+                  color: root.callContextActive && !root.micLive
                     ? (root.bar ? root.bar.urgent : Color.urgent)
                     : root.foreground
                   font.family: root.fontFamily
@@ -535,9 +581,11 @@ Panel {
                 }
 
                 Text {
-                  text: root.micLive
-                    ? "Tap right earbud to mute · Spoken: microphone off"
-                    : "Tap right earbud to unmute · Spoken: microphone on"
+                  text: root.callContextActive
+                    ? (root.micLive
+                        ? "Tap right earbud to mute · Spoken: microphone off"
+                        : "Tap right earbud to unmute · Spoken: microphone on")
+                    : "Right earbud controls media playback outside calls"
                   color: root.dim
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
@@ -545,49 +593,11 @@ Panel {
               }
             }
           }
-
-          Row {
-            id: gestureModeRow
-            width: parent.width
-            spacing: Style.space(6)
-
-            Button {
-              width: (gestureModeRow.width - gestureModeRow.spacing) / 2
-              text: "Calls Only (Auto)"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              fontSize: Style.font.caption
-              bordered: true
-              active: !root.alwaysCallContext
-              onClicked: root.setAlwaysCallContext(false)
-            }
-
-            Button {
-              width: (gestureModeRow.width - gestureModeRow.spacing) / 2
-              text: "Always Mute Tap"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              fontSize: Style.font.caption
-              bordered: true
-              active: root.alwaysCallContext
-              onClicked: root.setAlwaysCallContext(true)
-            }
-          }
-
-          Text {
-            width: parent.width
-            text: root.callContextActive
-              ? "Right earbud: Mute/Unmute tap active (voice prompts)"
-              : "Right earbud: Media gesture outside calls"
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-          }
         }
 
         Column {
           width: parent.width
-          spacing: Style.space(10)
+          spacing: Style.space(8)
           visible: root.connected
 
           PanelSectionHeader {
@@ -598,23 +608,52 @@ Panel {
           }
 
           Row {
-            id: lightingRow
+            id: lightingRow1
             width: parent.width
-            spacing: Style.space(5)
+            spacing: Style.space(6)
+
+            Button {
+              width: (lightingRow1.width - lightingRow1.spacing) / 2
+              text: "Off"
+              iconText: "󰌶"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              fontSize: Style.font.bodySmall
+              bordered: true
+              active: root.lighting === "off"
+              onClicked: root.setLighting("off")
+            }
+
+            Button {
+              width: (lightingRow1.width - lightingRow1.spacing) / 2
+              text: "Color Cycle"
+              iconText: "󰏘"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              fontSize: Style.font.bodySmall
+              bordered: true
+              active: root.lighting === "cycle"
+              onClicked: root.setLighting("cycle")
+            }
+          }
+
+          Row {
+            id: lightingRow2
+            width: parent.width
+            spacing: Style.space(6)
 
             Repeater {
               model: [
-                { label: "Off", value: "off" },
-                { label: "Cycle", value: "cycle" },
-                { label: "Static", value: "static" },
-                { label: "Breathe", value: "breathing" },
-                { label: "Strobe", value: "strobing" }
+                { label: "Static", value: "static", icon: "󰌵" },
+                { label: "Breathing", value: "breathing", icon: "󰈈" },
+                { label: "Strobing", value: "strobing", icon: "󱐋" }
               ]
 
               delegate: Button {
                 required property var modelData
-                width: (lightingRow.width - lightingRow.spacing * 4) / 5
+                width: (lightingRow2.width - lightingRow2.spacing * 2) / 3
                 text: modelData.label
+                iconText: modelData.icon
                 foreground: root.foreground
                 fontFamily: root.fontFamily
                 fontSize: Style.font.caption
@@ -628,7 +667,7 @@ Panel {
 
         Column {
           width: parent.width
-          spacing: Style.space(10)
+          spacing: Style.space(8)
           visible: root.connected
 
           PanelSectionHeader {
@@ -645,15 +684,16 @@ Panel {
 
             Repeater {
               model: [
-                { label: "English Voice", value: "english" },
-                { label: "Chinese Voice", value: "chinese" },
-                { label: "Beeps Only", value: "sound" }
+                { label: "English", value: "english", icon: "󰗊" },
+                { label: "Chinese", value: "chinese", icon: "󰗊" },
+                { label: "Beeps", value: "sound", icon: "󰓎" }
               ]
 
               delegate: Button {
                 required property var modelData
                 width: (voicePromptRow.width - voicePromptRow.spacing * 2) / 3
                 text: modelData.label
+                iconText: modelData.icon
                 foreground: root.foreground
                 fontFamily: root.fontFamily
                 fontSize: Style.font.caption
@@ -664,29 +704,89 @@ Panel {
             }
           }
 
-          Button {
+          Rectangle {
             width: parent.width
-            text: root.proximity ? "In-Ear Auto-Pause: ON" : "In-Ear Auto-Pause: OFF"
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            fontSize: Style.font.caption
-            bordered: true
-            active: root.proximity
-            onClicked: root.setProximity(!root.proximity)
+            height: Style.space(36)
+            radius: Style.cornerRadius
+            color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, proximityArea.containsMouse ? 0.09 : 0.05)
+            border.width: 1
+            border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
+
+            Row {
+              anchors.fill: parent
+              anchors.leftMargin: Style.space(12)
+              anchors.rightMargin: Style.space(10)
+              spacing: Style.space(8)
+
+              Text {
+                text: "󰏤  In-Ear Auto-Pause"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - proximitySwitch.width - parent.spacing
+                elide: Text.ElideRight
+              }
+
+              ToggleSwitch {
+                id: proximitySwitch
+                anchors.verticalCenter: parent.verticalCenter
+                checked: root.proximity
+                onToggled: root.setProximity(!root.proximity)
+              }
+            }
+
+            MouseArea {
+              id: proximityArea
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.setProximity(!root.proximity)
+            }
           }
-        }
 
-        PanelSeparator {
-          foreground: root.foreground
-        }
+          Rectangle {
+            width: parent.width
+            height: Style.space(36)
+            radius: Style.cornerRadius
+            color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, alwaysMuteArea.containsMouse ? 0.09 : 0.05)
+            border.width: 1
+            border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
 
-        Text {
-          width: parent.width
-          text: "Battery, noise control, lighting, and settings use the ASUS USB receiver. During calls, the right earbud tap controls microphone mute with the headset voice prompt."
-          wrapMode: Text.WordWrap
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
+            Row {
+              anchors.fill: parent
+              anchors.leftMargin: Style.space(12)
+              anchors.rightMargin: Style.space(10)
+              spacing: Style.space(8)
+
+              Text {
+                text: "󰍭  Always Mute Gesture"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - alwaysMuteSwitch.width - parent.spacing
+                elide: Text.ElideRight
+              }
+
+              ToggleSwitch {
+                id: alwaysMuteSwitch
+                anchors.verticalCenter: parent.verticalCenter
+                checked: root.alwaysCallContext
+                onToggled: root.setAlwaysCallContext(!root.alwaysCallContext)
+              }
+            }
+
+            MouseArea {
+              id: alwaysMuteArea
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.setAlwaysCallContext(!root.alwaysCallContext)
+            }
+          }
         }
       }
     }
