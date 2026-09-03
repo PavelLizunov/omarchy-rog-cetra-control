@@ -36,6 +36,9 @@ struct device_state {
   int voice_prompt;
   int proximity;
   int lighting;
+  int lighting_r;
+  int lighting_g;
+  int lighting_b;
   bool call_context;
   int tap_seq;
   bool mic_live;
@@ -233,6 +236,10 @@ static void reset_receiver_state(struct device_state *state) {
   state->voice_prompt = 1;
   state->proximity = 1;
   state->lighting = 0;
+  state->lighting_r = 0xff;
+  state->lighting_g = 0x00;
+  state->lighting_b = 0x00;
+  state->mic_live = true;
 }
 
 static void apply_packet(struct device_state *state, const unsigned char *packet, int size) {
@@ -243,14 +250,14 @@ static void apply_packet(struct device_state *state, const unsigned char *packet
       state->left_missing = 0;
     } else {
       state->left_missing++;
-      if (state->left_missing >= 6) state->left = -1;
+      if (state->left_missing >= 2) state->left = -1;
     }
     if (packet[7] <= 100) {
       state->right = packet[7];
       state->right_missing = 0;
     } else {
       state->right_missing++;
-      if (state->right_missing >= 6) state->right = -1;
+      if (state->right_missing >= 2) state->right = -1;
     }
     state->case_level = packet[8] <= 100 ? packet[8] : -1;
     state->connected = state->left >= 0 || state->right >= 0;
@@ -266,6 +273,7 @@ static void apply_packet(struct device_state *state, const unsigned char *packet
     state->proximity = packet[5] != 0 ? 1 : 0;
   } else if (size >= 7 && packet[0] == 0xcc && packet[1] == 0x70) {
     state->tap_seq++;
+    state->mic_live = !state->mic_live;
   }
 }
 
@@ -439,6 +447,9 @@ static bool handle_command(hid_device *device, struct device_state *state, struc
       if (parsed < 4) { r = 0xff; g = 0x00; b = 0x00; }
       set_lighting(device, effect, (unsigned char)r, (unsigned char)g, (unsigned char)b);
       state->lighting = effect;
+      state->lighting_r = r;
+      state->lighting_g = g;
+      state->lighting_b = b;
     }
   } else if (strcmp(key, "mic_state") == 0) {
     if (strcmp(value, "live") == 0) state->mic_live = true;
@@ -656,10 +667,14 @@ static int owner(int server_fd) {
       } else if (size > 0) {
         bool was_connected = state.connected;
         apply_packet(&state, packet, size);
-        if (!was_connected && state.connected && state.call_context
-            && !set_call_context(device, true)) {
-          disconnect_receiver(&device, &state);
-          next_open = now + 1000;
+        if (!was_connected && state.connected) {
+          state.mic_live = true;
+          if (state.call_context && !set_call_context(device, true)) {
+            disconnect_receiver(&device, &state);
+            next_open = now + 1000;
+          } else {
+            set_lighting(device, state.lighting, (unsigned char)state.lighting_r, (unsigned char)state.lighting_g, (unsigned char)state.lighting_b);
+          }
         }
       }
     }

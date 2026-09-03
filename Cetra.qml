@@ -96,10 +96,7 @@ Panel {
     if (data.voice_prompt !== undefined) voicePrompt = String(data.voice_prompt)
     if (data.proximity !== undefined) proximity = data.proximity === true
     if (data.lighting !== undefined) lighting = String(data.lighting)
-    if (data.tap_seq !== undefined && Number(data.tap_seq) !== tapSeq) {
-      tapSeq = Number(data.tap_seq)
-      root.micLive = !root.micLive
-    }
+    if (data.mic_live !== undefined) micLive = data.mic_live === true
     callContextActive = data.call_context === true
     if (pendingMode !== "" && listeningMode === pendingMode) {
       pendingMode = ""
