@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -118,6 +119,92 @@ static void runtime_path(char *target, size_t size, const char *name) {
   const char *runtime = getenv("XDG_RUNTIME_DIR");
   if (!runtime || !*runtime) runtime = "/tmp";
   snprintf(target, size, "%s/%s", runtime, name);
+}
+
+static bool logging_enabled = false;
+
+static void log_path(char *target, size_t size) {
+  const char *state = getenv("XDG_STATE_HOME");
+  if (state && *state) {
+    snprintf(target, size, "%s/omarchy/rog-cetra-control.log", state);
+    return;
+  }
+  const char *home = getenv("HOME");
+  if (home && *home) {
+    snprintf(target, size, "%s/.local/state/omarchy/rog-cetra-control.log", home);
+    return;
+  }
+  runtime_path(target, size, "rog-cetra-control.log");
+}
+
+static void ensure_dir_exists(const char *file_path) {
+  char dir[512];
+  snprintf(dir, sizeof(dir), "%s", file_path);
+  char *slash = strrchr(dir, '/');
+  if (slash && slash != dir) {
+    *slash = '\0';
+    char *parent = strrchr(dir, '/');
+    if (parent && parent != dir) {
+      *parent = '\0';
+      mkdir(dir, 0755);
+      *parent = '/';
+    }
+    mkdir(dir, 0755);
+  }
+}
+
+static FILE *open_log_file(void) {
+  char path[512];
+  log_path(path, sizeof(path));
+  ensure_dir_exists(path);
+
+  struct stat st;
+  if (stat(path, &st) == 0 && st.st_size > 5 * 1024 * 1024) {
+    char old_path[540];
+    snprintf(old_path, sizeof(old_path), "%s.old", path);
+    unlink(old_path);
+    rename(path, old_path);
+  }
+
+  FILE *f = fopen(path, "a");
+  if (!f) {
+    runtime_path(path, sizeof(path), "rog-cetra-control.log");
+    f = fopen(path, "a");
+  }
+  return f;
+}
+
+static void log_event(const char *format, ...) {
+  if (!logging_enabled) return;
+  FILE *f = open_log_file();
+  if (!f) return;
+
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  struct tm tm_info;
+  localtime_r(&ts.tv_sec, &tm_info);
+  char time_buf[32];
+  strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", &tm_info);
+
+  fprintf(f, "[%s.%03ld] ", time_buf, ts.tv_nsec / 1000000L);
+
+  va_list args;
+  va_start(args, format);
+  vfprintf(f, format, args);
+  va_end(args);
+
+  fputc('\n', f);
+  fclose(f);
+}
+
+static void hex_dump(char *out, size_t out_size, const unsigned char *data, int len) {
+  int max_bytes = (int)(out_size - 1) / 3;
+  if (len > max_bytes) len = max_bytes;
+  int pos = 0;
+  for (int i = 0; i < len; i++) {
+    pos += snprintf(out + pos, out_size - (size_t)pos, "%02x%s", data[i], (i + 1 < len) ? " " : "");
+  }
+  out[pos] = '\0';
 }
 
 static hid_device *open_receiver(void) {
@@ -245,6 +332,11 @@ static void reset_receiver_state(struct device_state *state) {
 static void apply_packet(struct device_state *state, const unsigned char *packet, int size) {
   if (size >= 9 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x07) {
     state->receiver = true;
+    int prev_left = state->left;
+    int prev_right = state->right;
+    int prev_case = state->case_level;
+    bool prev_connected = state->connected;
+
     if (packet[6] <= 100) {
       state->left = packet[6];
       state->left_missing = 0;
@@ -261,19 +353,68 @@ static void apply_packet(struct device_state *state, const unsigned char *packet
     }
     state->case_level = packet[8] <= 100 ? packet[8] : -1;
     state->connected = state->left >= 0 || state->right >= 0;
+
+    if (state->left != prev_left || state->right != prev_right || state->case_level != prev_case) {
+      log_event("BATTERY: left=%d right=%d case=%d (raw: L=0x%02x R=0x%02x Case=0x%02x, mask=0x%02x)",
+          state->left, state->right, state->case_level, packet[6], packet[7], packet[8], packet[5]);
+    }
+    if (prev_connected && !state->connected) {
+      log_event("LIFECYCLE: earbuds placed into case (both disconnected)");
+    }
   } else if (size >= 6 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x25) {
-    if (packet[5] <= 2) state->mode = packet[5];
+    if (packet[5] <= 2) {
+      int prev_mode = state->mode;
+      state->mode = packet[5];
+      if (state->mode != prev_mode) {
+        log_event("MODE_READBACK: mode=%s (%d)", mode_name(state->mode), state->mode);
+      }
+    }
   } else if (size >= 6 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x2b) {
-    if (packet[5] >= 1 && packet[5] <= 3) state->anc_level = packet[5];
+    if (packet[5] >= 1 && packet[5] <= 3) {
+      int prev_lvl = state->anc_level;
+      state->anc_level = packet[5];
+      if (state->anc_level != prev_lvl) {
+        log_event("ANC_LEVEL_READBACK: level=%d", state->anc_level);
+      }
+    }
   } else if (size >= 6 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x2c) {
+    bool prev_adp = state->anc_adaptive;
     state->anc_adaptive = packet[5] != 0;
+    if (state->anc_adaptive != prev_adp) {
+      log_event("ANC_ADAPTIVE_READBACK: enabled=%s", state->anc_adaptive ? "true" : "false");
+    }
   } else if (size >= 6 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x28) {
-    if (packet[5] <= 2) state->voice_prompt = packet[5];
+    if (packet[5] <= 2) {
+      int prev_p = state->voice_prompt;
+      state->voice_prompt = packet[5];
+      if (state->voice_prompt != prev_p) {
+        log_event("VOICE_PROMPT_READBACK: prompt=%s (%d)", prompt_name(state->voice_prompt), state->voice_prompt);
+      }
+    }
   } else if (size >= 6 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x26) {
+    int prev_prox = state->proximity;
     state->proximity = packet[5] != 0 ? 1 : 0;
+    if (state->proximity != prev_prox) {
+      log_event("PROXIMITY_READBACK: in_ear=%d", state->proximity);
+    }
   } else if (size >= 7 && packet[0] == 0xcc && packet[1] == 0x70) {
     state->tap_seq++;
     state->mic_live = !state->mic_live;
+    char hex[64];
+    hex_dump(hex, sizeof(hex), packet, size > 16 ? 16 : size);
+    log_event("TAP_EVENT: seq=%d raw=[%s] mic_live=%s call_context=%s",
+        state->tap_seq, hex, state->mic_live ? "true" : "false",
+        state->call_context ? "active" : "inactive");
+  } else if (size >= 9 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x09) {
+    log_event("UNSOLICITED_BATTERY (0x09): L=0x%02x R=0x%02x Case=0x%02x", packet[6], packet[7], packet[8]);
+  } else if (size >= 3 && packet[0] == 0xcc && packet[1] == 0x51 && packet[2] == 0x28) {
+    // Lighting output report ACK
+  } else if (size >= 3 && packet[0] == 0xcc && packet[1] == 0x50 && packet[2] == 0x55) {
+    // Lighting commit report ACK
+  } else {
+    char hex[128];
+    hex_dump(hex, sizeof(hex), packet, size > 32 ? 32 : size);
+    log_event("PACKET_UNHANDLED: len=%d bytes=[%s]", size, hex);
   }
 }
 
@@ -402,6 +543,7 @@ static bool sync_call_context(hid_device *device, struct device_state *state, bo
   bool changed = state->call_context != requested;
   if (changed) state->call_context = requested;
   if (!device || (!changed && !force)) return true;
+  log_event("CALL_CONTEXT: requested=%s force=%s", requested ? "active" : "inactive", force ? "true" : "false");
   return set_call_context(device, requested);
 }
 
@@ -409,6 +551,7 @@ static bool handle_command(hid_device *device, struct device_state *state, struc
   char key[32] = {0};
   char value[32] = {0};
   if (sscanf(command, "%31s %31s", key, value) != 2) return true;
+  log_event("CMD: %s", command);
   if (strcmp(key, "mode") == 0) {
     int mode = parse_mode(value);
     if (mode >= 0 && device) {
@@ -533,7 +676,10 @@ static int mirror(const char *socket_path) {
 }
 
 static void disconnect_receiver(hid_device **device, struct device_state *state) {
-  if (*device) hid_close(*device);
+  if (*device) {
+    log_event("RECEIVER: disconnected / closed handle");
+    hid_close(*device);
+  }
   *device = NULL;
   reset_receiver_state(state);
 }
@@ -559,6 +705,9 @@ static int owner(int server_fd) {
     .voice_prompt = 1,
     .proximity = 1,
     .lighting = 0,
+    .lighting_r = 0xff,
+    .lighting_g = 0x00,
+    .lighting_b = 0x00,
     .call_context = false,
     .tap_seq = 0,
     .mic_live = true,
@@ -634,6 +783,7 @@ static int owner(int server_fd) {
       device = open_receiver();
       if (device) {
         state.receiver = true;
+        log_event("RECEIVER: opened 0x%04x:0x%04x (iface %d)", VENDOR_ID, PRODUCT_ID, HID_INTERFACE);
         if (!sync_call_context(device, &state, requested, true)
             || !send_request(device, 0x07)
             || !send_request(device, 0x25)) {
@@ -669,6 +819,8 @@ static int owner(int server_fd) {
         apply_packet(&state, packet, size);
         if (!was_connected && state.connected) {
           state.mic_live = true;
+          log_event("LIFECYCLE: earbuds out of case -> mic_live=true, restoring call_context=%s, lighting=%s",
+              state.call_context ? "active" : "inactive", lighting_name(state.lighting));
           if (state.call_context && !set_call_context(device, true)) {
             disconnect_receiver(&device, &state);
             next_open = now + 1000;
@@ -702,6 +854,9 @@ int main(int argc, char **argv) {
     fflush(stdout);
     while (true) sleep(3600);
   }
+
+  logging_enabled = true;
+  log_event("DAEMON: starting (PID %ld)", (long)getpid());
 
   umask(0077);
   signal(SIGPIPE, SIG_IGN);
@@ -750,6 +905,7 @@ int main(int argc, char **argv) {
     return 1;
   }
   int result = owner(server_fd);
+  log_event("DAEMON: exiting (PID %ld, result %d)", (long)getpid(), result);
   hid_exit();
   close(server_fd);
   unlink(socket_path);
