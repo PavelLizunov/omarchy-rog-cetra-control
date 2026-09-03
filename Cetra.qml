@@ -11,6 +11,7 @@ Panel {
 
   readonly property string watchCommand: Qt.resolvedUrl("bin/cetra-watch").toString().replace("file://", "")
   readonly property color foreground: bar ? bar.foreground : Color.foreground
+  readonly property color accent: bar ? bar.accent : Color.accent
   readonly property color barColor: lowestLevel >= 0 && lowestLevel <= 20
     ? (bar ? bar.urgent : Color.urgent)
     : barForeground
@@ -148,7 +149,17 @@ Panel {
   function setLighting(effect) {
     if (!connected) return
     lighting = effect
-    deviceWatchProc.write("lighting " + effect + "\n")
+    var r = Math.round(accent.r * 255)
+    var g = Math.round(accent.g * 255)
+    var b = Math.round(accent.b * 255)
+    deviceWatchProc.write("lighting " + effect + " " + r + " " + g + " " + b + "\n")
+  }
+
+  function cycleListeningMode() {
+    if (!connected || pendingMode !== "") return
+    if (listeningMode === "off") setListeningMode("anc")
+    else if (listeningMode === "anc") setListeningMode("ambient")
+    else setListeningMode("off")
   }
 
   function updateCallContext() {
@@ -237,10 +248,22 @@ Panel {
     horizontalMargin: 7
     tooltipText: root.connected
       ? "ROG Cetra SpeedNova\nLeft: " + root.levelText(root.leftLevel)
-        + "\nRight: " + root.levelText(root.rightLevel)
-        + "\nCase: " + root.levelText(root.caseLevel)
+        + " · Right: " + root.levelText(root.rightLevel)
+        + " · Case: " + root.levelText(root.caseLevel)
+        + "\nMode: " + root.listeningMode.toUpperCase()
+        + (root.listeningMode === "anc" ? " (" + (root.ancAdaptive ? "Adaptive" : (root.ancLevel === 1 ? "Low" : (root.ancLevel === 2 ? "Mid" : "High"))) + ")" : "")
+        + " · Mic: " + (root.callContextActive ? (root.micLive ? "Live" : "Muted") : "Media")
       : "ROG Cetra SpeedNova\n" + root.statusLabel
-    onPressed: function() { root.toggle() }
+    onPressed: function(button) {
+      if (button === Qt.RightButton) {
+        root.cycleListeningMode()
+      } else {
+        root.toggle()
+      }
+    }
+    onWheelMoved: function(delta) {
+      if (delta !== 0) root.cycleListeningMode()
+    }
 
     Row {
       id: barContent
@@ -292,6 +315,28 @@ Panel {
       anchors.fill: parent
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
+      onTextKey: function(t) {
+        if (t === "o" || t === "O" || t === "щ" || t === "Щ") {
+          root.setListeningMode("off")
+        } else if (t === "n" || t === "N" || t === "т" || t === "Т") {
+          root.setListeningMode("anc")
+        } else if (t === "a" || t === "A" || t === "ф" || t === "Ф") {
+          root.setListeningMode("ambient")
+        } else if (t === "1") {
+          if (root.ancAdaptive) root.setAncAdaptive(false)
+          root.setAncLevel(1)
+        } else if (t === "2") {
+          if (root.ancAdaptive) root.setAncAdaptive(false)
+          root.setAncLevel(2)
+        } else if (t === "3") {
+          if (root.ancAdaptive) root.setAncAdaptive(false)
+          root.setAncLevel(3)
+        } else if (t === "m" || t === "M" || t === "ь" || t === "Ь") {
+          root.setAlwaysCallContext(!root.alwaysCallContext)
+        } else if (t === "p" || t === "P" || t === "з" || t === "З") {
+          root.setProximity(!root.proximity)
+        }
+      }
       Keys.onPressed: function(event) {
         if (event.key === Qt.Key_O) {
           root.setListeningMode("off")
@@ -301,6 +346,18 @@ Panel {
           event.accepted = true
         } else if (event.key === Qt.Key_A) {
           root.setListeningMode("ambient")
+          event.accepted = true
+        } else if (event.key === Qt.Key_1) {
+          if (root.ancAdaptive) root.setAncAdaptive(false)
+          root.setAncLevel(1)
+          event.accepted = true
+        } else if (event.key === Qt.Key_2) {
+          if (root.ancAdaptive) root.setAncAdaptive(false)
+          root.setAncLevel(2)
+          event.accepted = true
+        } else if (event.key === Qt.Key_3) {
+          if (root.ancAdaptive) root.setAncAdaptive(false)
+          root.setAncLevel(3)
           event.accepted = true
         }
       }
@@ -354,15 +411,17 @@ Panel {
               delegate: Rectangle {
                 required property var modelData
                 width: (batteryRow.width - batteryRow.spacing * 2) / 3
-                implicitHeight: batteryCell.implicitHeight + Style.space(18)
+                implicitHeight: batteryCell.implicitHeight + Style.space(22)
                 radius: Style.cornerRadius
                 color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06)
                 border.width: 1
                 border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.14)
+                clip: true
 
                 Column {
                   id: batteryCell
                   anchors.centerIn: parent
+                  anchors.verticalCenterOffset: -Style.space(2)
                   spacing: Style.space(3)
 
                   Row {
@@ -393,6 +452,27 @@ Panel {
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.title
                     font.bold: true
+                  }
+                }
+
+                Rectangle {
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.bottom: parent.bottom
+                  height: Style.space(3)
+                  color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
+
+                  Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    visible: modelData.value !== null
+                    width: parent.width * Math.max(0, Math.min(100, Number(modelData.value || 0))) / 100.0
+                    color: modelData.value !== null && Number(modelData.value) <= 20
+                      ? (root.bar ? root.bar.urgent : Color.urgent)
+                      : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.55)
+
+                    Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
                   }
                 }
               }
@@ -517,7 +597,7 @@ Panel {
             width: parent.width
             text: root.pendingMode !== ""
               ? "Switching to " + root.pendingMode.toUpperCase() + "…"
-              : "Shortcuts: O Off · N ANC · A Ambient"
+              : "Shortcuts: O Off · N ANC · A Ambient · 1/2/3 Level · M Mute"
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption

@@ -431,9 +431,13 @@ static bool handle_command(hid_device *device, struct device_state *state, struc
       if (!set_proximity(device, enabled) || !send_request(device, 0x26)) return false;
     }
   } else if (strcmp(key, "lighting") == 0) {
-    int effect = parse_lighting(value);
+    char effect_str[32] = {0};
+    int r = 0xff, g = 0x00, b = 0x00;
+    int parsed = sscanf(command, "lighting %31s %d %d %d", effect_str, &r, &g, &b);
+    int effect = parse_lighting(effect_str);
     if (effect >= 0 && device) {
-      set_lighting(device, effect, 0xff, 0x00, 0x00);
+      if (parsed < 4) { r = 0xff; g = 0x00; b = 0x00; }
+      set_lighting(device, effect, (unsigned char)r, (unsigned char)g, (unsigned char)b);
       state->lighting = effect;
     }
   } else if (strcmp(key, "mic_state") == 0) {
