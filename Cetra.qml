@@ -660,12 +660,24 @@ Panel {
                 Text {
                   text: root.callContextActive
                     ? (root.micLive
-                        ? "Tap right earbud to mute · Spoken: microphone off"
-                        : "Tap right earbud to unmute · Spoken: microphone on")
+                        ? "Tap right earbud to mute · Click card to resync"
+                        : "Tap right earbud to unmute · Click card to resync")
                     : "Right earbud controls media playback outside calls"
                   color: root.dim
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
+                }
+              }
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: root.callContextActive ? Qt.PointingHandCursor : Qt.ArrowCursor
+              onClicked: {
+                if (root.callContextActive) {
+                  root.micLive = !root.micLive
+                  deviceWatchProc.write("mic_state " + (root.micLive ? "live" : "muted") + "\n")
                 }
               }
             }
