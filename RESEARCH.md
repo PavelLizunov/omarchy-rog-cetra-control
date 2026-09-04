@@ -181,7 +181,7 @@ The headset hardware ADC disconnects on internal mute:
 - **Live (Microphone on)**: Analog pre-amp noise floor present (RMS > 5.0, < 2% zeroes), even during complete acoustic silence.
 Combined with `cc 70 00 00 00 01 01` edge notifications on physical tap, reading a 50ms audio buffer from `alsa_input.usb-ASUSTek_ROG_CETRA_TRUE_WIRELESS_SPEEDNOVA_0000000000000000-00.mono-fallback` allows instantaneous, 100% deterministic hardware mute state detection without desynchronization risk.
 
-### Call context
+### Call context and Gesture Architecture
 
 The standard Telephony HID Output Reports are:
 
@@ -190,17 +190,40 @@ The standard Telephony HID Output Reports are:
 05 00  media context active
 ```
 
+The vendor gesture input report is `0xcc 0x70` (64 bytes):
+
+- **Byte 5 (Earbud):**
+  - `0x00`: Left earbud
+  - `0x01`: Right earbud
+- **Byte 6 (Gesture):**
+  - `0x01`: Single tap
+  - `0x02`: Double tap
+  - `0x03`: Triple tap
+  - `0x00`: Long press (with byte 7 = `0x01`)
+
+Concurrent Consumer Control report `0x0c` (2 bytes):
+- `0c 08`: `Usage: Play/Pause` (mapped to Linux `KEY_PLAYPAUSE`)
+- `0c 10`: `Usage: Next Track`
+- `0c 00`: Key release
+
+#### Gesture behavior matrix:
+| Earbud | Gesture | Packet Payload | Context | Hardware Behavior |
+|---|---|---|---|---|
+| Left (`00`) | Single tap | `cc 70 .. 00 01` | Any | Emits `0c 08` (`KEY_PLAYPAUSE`). Mic untouched. |
+| Left (`00`) | Double tap | `cc 70 .. 00 02` | Any | Toggles ANC mode in hardware. Mic untouched. |
+| Right (`01`) | Double tap | `cc 70 .. 01 02` | Media | Emits `0c 10` (Next Track). Mic untouched. |
+| Right (`01`) | Double tap | `cc 70 .. 01 02` | Call | Answer / End call. Mic untouched. |
+| Right (`01`) | Long press | `cc 70 .. 01 00 01`| Any | Decline call / Voice assistant. Mic untouched. |
+| Right (`01`) | Single tap | `cc 70 .. 01 01` | Media (`05 00`) | Emits `0c 08` (`KEY_PLAYPAUSE`). Stops/plays video. Mic untouched. |
+| Right (`01`) | Single tap | `cc 70 .. 01 01` | Call (`05 31`) | Native Mute/Unmute toggle with voice prompt (`microphone off/on`). |
+
 `05 31` enables the right-earbud call gesture. A physical right-earbud tap then
 toggles the headset's internal microphone mute and plays its native
-`microphone off/on` prompt. The internal toggle does not change ALSA, PulseAudio,
-PipeWire, or EasyEffects mute state.
+`microphone off/on` prompt. Outside calls (`05 00`), right-earbud tap is a media
+gesture (`KEY_PLAYPAUSE`), which pauses/resumes active media without muting.
 
-`05 31` and `05 33` do not emulate a physical tap, do not play the native voice
-prompt, and are not reliable internal mute-state commands.
-
-Automatic call-context detection was reproduced with a synthetic capture stream
-named `WEBRTC VoiceEngine`. EasyEffects, `pw-record`, Voxtype, and recognition
-keepalive streams are intentionally excluded.
+Automatic call-context detection is triggered when Discord, Steam, Telegram,
+Zoom, or a WebRTC stream uses the microphone, or permanently via "Always Mute Gesture".
 
 ## Microphone state: current evidence
 

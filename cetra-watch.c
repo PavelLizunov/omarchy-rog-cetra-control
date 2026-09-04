@@ -329,7 +329,7 @@ static void reset_receiver_state(struct device_state *state) {
   state->mic_live = true;
 }
 
-static void apply_packet(struct device_state *state, const unsigned char *packet, int size) {
+static void apply_packet(hid_device *device, struct device_state *state, const unsigned char *packet, int size) {
   if (size >= 9 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x07) {
     state->receiver = true;
     int prev_left = state->left;
@@ -398,13 +398,37 @@ static void apply_packet(struct device_state *state, const unsigned char *packet
       log_event("PROXIMITY_READBACK: in_ear=%d", state->proximity);
     }
   } else if (size >= 7 && packet[0] == 0xcc && packet[1] == 0x70) {
-    state->tap_seq++;
-    state->mic_live = !state->mic_live;
     char hex[64];
     hex_dump(hex, sizeof(hex), packet, size > 16 ? 16 : size);
-    log_event("TAP_EVENT: seq=%d raw=[%s] mic_live=%s call_context=%s",
-        state->tap_seq, hex, state->mic_live ? "true" : "false",
-        state->call_context ? "active" : "inactive");
+    int earbud = packet[5];
+    int gesture = packet[6];
+    int sub = packet[7];
+
+    if (earbud == 0x00 && gesture == 0x02) {
+      // Left earbud double-tap: native hardware ANC mode toggle
+      log_event("GESTURE: left earbud double-tap -> trigger immediate ANC readback");
+      if (device) send_request(device, 0x25);
+    } else if (earbud == 0x01 && gesture == 0x01) {
+      // Right earbud single-tap
+      if (state->call_context) {
+        state->tap_seq++;
+        state->mic_live = !state->mic_live;
+        log_event("GESTURE: right earbud single-tap in call -> toggled mic_live=%s (seq=%d)",
+            state->mic_live ? "true" : "false", state->tap_seq);
+      } else {
+        log_event("GESTURE: right earbud single-tap outside call -> media play/pause (mic_live unchanged: %s)",
+            state->mic_live ? "true" : "false");
+      }
+    } else {
+      log_event("GESTURE: earbud=%s (%d) gesture=%d sub=%d (raw: %s)",
+          earbud == 0 ? "left" : (earbud == 1 ? "right" : "unknown"), earbud, gesture, sub, hex);
+    }
+  } else if (size >= 2 && packet[0] == 0x0c) {
+    if (packet[1] != 0) {
+      log_event("CONSUMER_KEY: usage=0x%02x (0x08=PlayPause, 0x10=Next, 0x20=Prev)", packet[1]);
+    }
+  } else if (size >= 2 && packet[0] == 0x05) {
+    log_event("TELEPHONY_EVENT: state=0x%02x (0x01=OffHook, 0x00=OnHook)", packet[1]);
   } else if (size >= 9 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x09) {
     log_event("UNSOLICITED_BATTERY (0x09): L=0x%02x R=0x%02x Case=0x%02x", packet[6], packet[7], packet[8]);
   } else if (size >= 3 && packet[0] == 0xcc && packet[1] == 0x51 && packet[2] == 0x28) {
@@ -440,17 +464,45 @@ static int selftest(void) {
   const unsigned char anc_lvl[] = {0xcc, 0x12, 0x2b, 0, 0, 2};
   const unsigned char anc_adp[] = {0xcc, 0x12, 0x2c, 0, 0, 1};
   const unsigned char prompt[] = {0xcc, 0x12, 0x28, 0, 0, 1};
-  apply_packet(&state, battery, sizeof(battery));
-  apply_packet(&state, mode, sizeof(mode));
-  apply_packet(&state, anc_lvl, sizeof(anc_lvl));
-  apply_packet(&state, anc_adp, sizeof(anc_adp));
-  apply_packet(&state, prompt, sizeof(prompt));
+  apply_packet(NULL, &state, battery, sizeof(battery));
+  apply_packet(NULL, &state, mode, sizeof(mode));
+  apply_packet(NULL, &state, anc_lvl, sizeof(anc_lvl));
+  apply_packet(NULL, &state, anc_adp, sizeof(anc_adp));
+  apply_packet(NULL, &state, prompt, sizeof(prompt));
   if (!state.receiver || !state.connected) return 1;
   if (state.left != 91 || state.right != 98 || state.case_level != 100) return 1;
   if (state.mode != 2 || state.anc_level != 2 || !state.anc_adaptive || state.voice_prompt != 1) return 1;
 
+  // Left earbud tap (0x00, 0x01) must NOT toggle mic_live
+  const unsigned char left_tap[] = {204, 112, 0, 0, 0, 0x00, 0x01, 0};
+  apply_packet(NULL, &state, left_tap, sizeof(left_tap));
+  if (!state.mic_live || state.tap_seq != 0) return 1;
+
+  // Left earbud double-tap (0x00, 0x02) must NOT toggle mic_live
+  const unsigned char left_double[] = {204, 112, 0, 0, 0, 0x00, 0x02, 0};
+  apply_packet(NULL, &state, left_double, sizeof(left_double));
+  if (!state.mic_live || state.tap_seq != 0) return 1;
+
+  // Right earbud tap outside call (call_context=false) must NOT toggle mic_live
+  state.call_context = false;
+  const unsigned char right_tap[] = {204, 112, 0, 0, 0, 0x01, 0x01, 0};
+  apply_packet(NULL, &state, right_tap, sizeof(right_tap));
+  if (!state.mic_live || state.tap_seq != 0) return 1;
+
+  // Right earbud tap inside call (call_context=true) MUST toggle mic_live
+  state.call_context = true;
+  apply_packet(NULL, &state, right_tap, sizeof(right_tap));
+  if (state.mic_live || state.tap_seq != 1) return 1;
+  apply_packet(NULL, &state, right_tap, sizeof(right_tap));
+  if (!state.mic_live || state.tap_seq != 2) return 1;
+
+  // Right earbud double-tap (0x01, 0x02) must NOT toggle mic_live
+  const unsigned char right_double[] = {204, 112, 0, 0, 0, 0x01, 0x02, 0};
+  apply_packet(NULL, &state, right_double, sizeof(right_double));
+  if (!state.mic_live || state.tap_seq != 2) return 1;
+
   const unsigned char in_case[] = {0xcc, 0x12, 0x07, 0, 0, 0, 255, 255, 100};
-  for (int i = 0; i < 6; i++) apply_packet(&state, in_case, sizeof(in_case));
+  for (int i = 0; i < 6; i++) apply_packet(NULL, &state, in_case, sizeof(in_case));
   if (state.connected) return 1;
 
   struct command_source owner_source = {.fd = STDIN_FILENO};
@@ -816,7 +868,7 @@ static int owner(int server_fd) {
         next_open = now + 1000;
       } else if (size > 0) {
         bool was_connected = state.connected;
-        apply_packet(&state, packet, size);
+        apply_packet(device, &state, packet, size);
         if (!was_connected && state.connected) {
           state.mic_live = true;
           log_event("LIFECYCLE: earbuds out of case -> mic_live=true, restoring call_context=%s, lighting=%s",
