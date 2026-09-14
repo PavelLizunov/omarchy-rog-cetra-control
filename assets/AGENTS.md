@@ -11,7 +11,9 @@ Contains static graphic assets for `io.github.pavellizunov.rog-cetra-control`.
    - Standard viewBox: `0 0 64 64`.
    - Stroke / Fill colors must be white (`#fff` or `#ffffff`).
    - Hardcoded UI hex colors (e.g. `#1a1a1a`, `#ff0000`) are strictly forbidden in SVG assets (enforced by `./tests/run.sh`).
-   - Dynamic coloring is handled at runtime by `CetraIcon.qml` using `MultiEffect.colorizationColor` or CSS styling.
+   - Dynamic coloring is handled by `CetraIcon.qml` using
+     `MultiEffect.colorizationColor`. Section components reuse CetraIcon;
+     CSS is not part of this QML rendering path.
 
 2. **Hardware Fidelity:**
    - The symbolic headset icon (`cetra-symbolic.svg`) must reflect the physical industrial design of ASUS ROG Cetra True Wireless SpeedNova:

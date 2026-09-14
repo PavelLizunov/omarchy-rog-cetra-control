@@ -1,11 +1,21 @@
 # ROG Cetra SpeedNova Protocol Research
 
+Source-map update (2026-09-14): native report builders, parsing, commands and
+filesystem code now live in `daemon/` under the same `cetra-watch.c` translation
+unit. See MODULES.md. Protocol bytes and documented observations were not changed
+by relocation. Historical source line numbers below must not be treated as current.
+
 This document is the handoff for continued reverse engineering of the ROG
 Cetra True Wireless SpeedNova receiver `0b05:1ad3`. It separates reproduced
 facts from hypotheses so future work does not repeat closed branches or expose
 unverified device commands.
 
-Research snapshot: 2026-09-02.
+Initial research snapshot: 2026-09-02; dated follow-ups below extend it.
+
+Documentation correction: 2026-09-06. PCM silence observations below do not
+establish absolute mute readback. `BACKLOG.md` owns current implementation and
+verification status; historical captures are not evidence that a current
+runtime implementation has passed tests.
 
 ## Safety boundary
 
@@ -138,6 +148,24 @@ cc 41 0a 00 00 VALUE
 Readback request: `cc 12 26` (byte 5: `0` = Off, `1` = On).
 Write command, 64-byte HID Output Report: `cc 41 09 00 00 VALUE`.
 
+#### USB proximity event delivery
+
+The 2026-09-13 owner log confirms `proximity on` at 13:17:16.501 and readback
+`in_ear=1` at 13:17:16.613, with further Off/On readbacks at 13:18:15.597 and
+13:18:27.101. These establish the setting value only. The user reported an
+earbud tone on removal without a PC playback pause; no synchronized removal
+marker or comparative call-context-off trial accompanies that report.
+
+No verified command for forwarding proximity events to USB was identified in
+the documented HAL inventory. This does not prove such a command cannot exist,
+nor establish that auto-pause works exclusively over Bluetooth AVRCP. The `01`
+presence response describes earbud availability, not in-ear sensor state.
+
+Further acceptance requires marked removal/insertion trials with one existing
+HID owner, verified proximity readback and separately recorded requested call
+context, followed by comparison with official software or Bluetooth behavior.
+Do not fuzz opcodes or synthesize player actions from availability reports.
+
 ### Sidetone
 
 Readback request: `cc 12 24` (byte 5: `0` = Off, `1` = On).
@@ -158,6 +186,12 @@ Effects:
 - `3`: Strobing
 - `4`: Color Cycle
 
+Runtime sequence clarification (2026-09-14): `set_lighting()` sends zone 1 then
+zone 0 and commits twice. Runtime Off is effect 1 (Static) with RGB 0/0/0, not
+effect 0 as listed in the historical effect inventory above. Exact official Off
+traffic and the necessity of both commits remain unverified. Mock transaction
+tests establish software error handling, not the official protocol sequence.
+
 Write command 2 (commit / save, 64-byte HID Output Report):
 
 ```text
@@ -174,12 +208,23 @@ cc 41 04 00 00 B0 B1 B2 B3 B4 B5 B6 B7 B8 B9
 
 Bands correspond to frequencies: 125, 250, 500, 1K, 2K, 4K, 8K, 16K.
 
-### Microphone Hardware Detection Method
+This historical list has eight frequencies for ten payload values. The mapping
+is incomplete; no ten-band UI or arbitrary EQ write is authorized by this note.
 
-The headset hardware ADC disconnects on internal mute:
-- **Muted (Microphone off)**: 100.0% mathematical zeroes (`0x0000`) in PCM stream (RMS = 0.00, Peak = 0).
-- **Live (Microphone on)**: Analog pre-amp noise floor present (RMS > 5.0, < 2% zeroes), even during complete acoustic silence.
-Combined with `cc 70 00 00 00 01 01` edge notifications on physical tap, reading a 50ms audio buffer from `alsa_input.usb-ASUSTek_ROG_CETRA_TRUE_WIRELESS_SPEEDNOVA_0000000000000000-00.mono-fallback` allows instantaneous, 100% deterministic hardware mute state detection without desynchronization risk.
+### Microphone PCM Silence Observations (Not Absolute Readback)
+
+Earlier research reported zero-valued PCM after the `Microphone off` prompt and
+a noise floor after `Microphone on`, using a 50 ms buffer from
+`alsa_input.usb-ASUSTek_ROG_CETRA_TRUE_WIRELESS_SPEEDNOVA_0000000000000000-00.mono-fallback`.
+These are observations of one capture path, not proof that the earbud ADC
+disconnects or that live input always has a particular noise floor.
+
+Software mute in the audio graph, a gate, routing, processing, or capture failure
+can also produce silence. Combining PCM silence with an edge notification does
+not establish absolute headset-native mute state or eliminate desynchronization.
+The earlier deterministic-detection claim was erroneous: production code did
+not implement this proposed PCM check, and it is not a validated mute readback.
+The native voice prompt remains the user's authoritative indication.
 
 ### Call context and Gesture Architecture
 
@@ -225,6 +270,57 @@ gesture (`KEY_PLAYPAUSE`), which pauses/resumes active media without muting.
 Automatic call-context detection is triggered when Discord, Steam, Telegram,
 Zoom, or a WebRTC stream uses the microphone, or permanently via "Always Mute Gesture".
 
+### Right tap and Consumer Play/Pause, 2026-09-13
+
+Existing owner PID `318143` logged these local times (UTC+03:00):
+
+```text
+13:14:06.271 CALL_CONTEXT: requested=active force=false
+13:14:06.277 TELEPHONY_EVENT: state=0x01
+13:17:23.009 GESTURE: right earbud single-tap in call observed (seq=1, microphone_state=unknown)
+13:17:23.059 CONSUMER_KEY: usage=0x08
+```
+
+The two input events are 50 ms apart, not simultaneous. The installed Omarchy
+media bindings map XF86AudioPlay/XF86AudioPause to `omarchy-shell media playPause`.
+The daemon only logs Consumer Control packets; reading or ignoring them through
+hidraw does not consume the kernel input event.
+
+`call_context` stores aggregated requested intent in `sync_call_context()`, not
+hardware readback. Telephony input is logged, not reconciled with that field.
+The earlier controlled two-tap capture below had no companion Consumer report.
+The evidence establishes that media-key suppression is not guaranteed, not that
+every call-mode tap emits Play/Pause or that native mute toggled in this trial.
+No verified suppression opcode is documented.
+
+Subsequent user observation: during an actual ongoing call, right taps did not
+pause video. This is a user report without a new synchronized packet capture;
+it further limits the earlier event pair to its observed context. No general
+call-mode media-key suppression workaround is enabled.
+
+Additional user observation: outside a real call, enabling the persistent call
+request still resulted in media pause rather than the expected native microphone
+gesture. This does not identify the missing precondition (active capture, audio
+profile or other firmware context). The UI labels this as an experimental
+request and never treats the requested bit as confirmed tap behavior. Subsequent
+user decision removed the manual control altogether; legacy saved values are
+ignored. Automatic capture-driven requests and daemon call IPC remain.
+
+### ANC readback timing, 2026-09-14
+
+Existing owner telemetry records `anc_level 3` at 01:54:16.367 and level-3
+readback at 01:54:24.539 (8.172 seconds); level-1 request at 01:54:09.347
+was followed by level-1 readback at 01:54:14.421 (5.074 seconds). Immediate
+readback is not sufficient to establish the applied value. The UI's old nominal
+three-second timeout was shorter than the existing ten-second periodic query
+cycle. The corrected UI allows 48 scheduler ticks at 250 ms and clears failures
+when a matching late reply arrives. This is UI policy, not ASUS timing guarantees.
+
+A system-level filter would require separate implementation and acceptance,
+preferably scoped to the receiver's input device and an explicit user policy.
+A global key guard also affects other keyboards. Sending a compensating
+`playPause` is not reliable cancellation because it toggles playback state.
+
 ## Microphone state: current evidence
 
 A packet with this raw HID content was observed after physical right-earbud taps
@@ -235,7 +331,8 @@ cc 70 00 00 00 01 01
 ```
 
 It behaves like an edge event in those observations, not an absolute state: the
-payload is identical for both directions, and state had to be toggled locally.
+payload is identical for both directions. Toggling a local bit was an inference,
+not a hardware readback.
 It is not a stable contract:
 
 - a 2026-09-02 tap that audibly produced `microphone off` did not produce
@@ -245,8 +342,19 @@ It is not a stable contract:
 - an existing USBPcap capture contains no `cc 70` packet;
 - the receiver exposes no confirmed absolute internal mute-state readback.
 
-The plugin therefore uses the headset voice prompt as the authoritative state
-and does not display an inferred `Live`/`Muted` value.
+The current UI therefore displays `Unknown`, not inferred `Live`/`Muted`; the
+user follows the headset voice prompt. The plugin does not listen to or decode
+that prompt. The daemon correction in progress defines
+`"microphone_state":"unknown"` as no confirmed absolute hardware state and
+retains `tap_seq` only as an observed in-call right-earbud single-tap report
+count. Neither this counter nor its parity is a mute state. Removal of daemon
+`mic_live` and `mic_state` awaits primary-agent verification under P0.1 in
+`BACKLOG.md`.
+
+The prefix shown above has 7 bytes. If a received report ends there, byte 7 is
+absent; reading a sub-gesture requires a report length of at least 8 bytes. Full
+captures below are 64 bytes. This parser boundary does not assert that those
+captures were truncated or change any verified opcode or gesture semantics.
 
 ### Live trace evidence
 
@@ -275,14 +383,14 @@ consecutive physical right-earbud taps:
 Key facts established:
 - Exactly two `cc 70` packets were received across the entire recording session,
   matching the two physical taps 1:1.
-- Both packets are 100% byte-for-byte identical (`01 01`).
+- Both packets are byte-for-byte identical (`01 01`).
 - No other HID report (`0x05`, `0x0c`, or `0xcc`) or Audio Control transfer
   accompanied the taps.
 - This confirms `cc 70 00 00 00 01 01` is strictly an edge notification of a
   gesture tap, not an absolute mute/unmute state.
-- Because the headset toggles mute internally and provides no absolute readback,
-  inferring `Live`/`Muted` in software would inevitably desynchronize. The native
-  voice prompt remains the sole authoritative mute state.
+- Because the headset toggles mute internally and no absolute readback has been
+  confirmed, inferring `Live`/`Muted` from these edges can desynchronize. The
+  native voice prompt remains the user's authoritative mute indication.
 
 ## Official ASUS package
 
@@ -369,8 +477,9 @@ and `903`. It does not register device-level `MIC_VOLUME_CHANGED=60`.
   - `AacR55ES::GetFunction(53)` at `0x180082e11` returns `0x80004001` (`E_NOTIMPL`).
   - There is no readback request opcode (no `12 0b`) in `C_R55ES_Protocol`.
   - In `caps.json` for both USB (`6867`) and Bluetooth (`6869`), `hasGestureMode` is
-    absent (`undefined`), meaning custom gesture remapping is not supported by the
-    hardware/firmware. The Armoury Crate UI only displays static user manuals
+    absent (`undefined`). This establishes that the inspected resources do not
+    expose custom remapping, not that every firmware path lacks support.
+    The Armoury Crate UI only displays static user manuals
     (`userManual.gesture`) and never invokes Function `53`.
   - In the generic SDK (`headset/index.js`), `GESTURE_MODE` is a configuration setter
     for side assignment (`0: BOTH`, `1: LEFT`, `2: RIGHT`), not an execution command.
@@ -447,8 +556,11 @@ All host-initiated `0x12` / `0x41` / `0x71` request opcodes in `C_R55ES_Protocol
 | `71 01` | Link info | Device link information |
 | `71 02` | Device pairing | Pairing state |
 
-This inventory proves conclusively that official ASUS code contains no request
-opcode for microphone mute state or gesture configuration readback.
+No microphone mute-state or gesture-configuration readback request was found in
+this inventory of `C_R55ES_Protocol` in HAL 1.3.95.0. Together with the checked
+function paths, it establishes that no host command for native mute or absolute
+mute readback has been confirmed by this investigation, not that no such command
+could exist in any firmware or other unexamined path.
 
 ## G-Helper findings
 
@@ -488,14 +600,185 @@ the mic gesture path by itself.
 
 - Internal mute persisted across separate synthetic call sessions.
 - Internal mute persisted across a helper restart.
-- An earlier test indicated that placing the earbuds in the case resets the next
-  call session to Live, but the complete controlled case cycle described below
-  has not yet been repeated after the latest runtime changes.
+- An earlier test suggested a case-cycle mute reset. The side-separated trials
+  below qualify this observation: it must not be generalized to every docking
+  event or to a guaranteed initial Live state.
+- User observation (2026-09-06): after setting native microphone mute to Off,
+  placing the earbud in the case and taking it out, the microphone was On again.
+  The user also reports that the noise-control mode was unchanged. This supports
+  a mute reset across the case cycle, not a reset of all headset settings.
+  This report is not a time-correlated HID/audio capture, a repeatability count,
+  or proof of which step (docking, charging, waking, or reconnecting) resets mute.
+  Earbud absence or receiver reconnect alone must not be treated as a verified
+  case cycle or used to publish an absolute microphone state.
 
 These observations concern headset behaviour only. They do not provide an
 absolute host-readable state.
 
+### Side-separated mute trials, 2026-09-06
+
+All times below are local UTC+03:00. The user listened to the native prompts and
+checked whether speech passed in Discord. Audio was not recorded by the agent;
+speech/prompt observations are user reports, not timestamped PCM measurements.
+HID evidence is from the existing owner's telemetry, not a second hidraw reader.
+The observed owner PID remained `3681891` across the accepted trials, with
+`call_context=true`. No plugin files or settings were changed during the trials.
+
+| Trial | Initial condition and action | User observation | Telemetry anchors |
+| --- | --- | --- | --- |
+| R1 | Both out, prompt Off and silence; dock only right, then retrieve without tapping | Silence after retrieval; first subsequent tap said On and speech returned | Mute tap 23:33:11.122; `08` byte 5=`10` at 23:33:19.290/.846; `01` byte 5=`01` at 23:34:14.983; right missing 23:34:16.603; right returns 23:34:22.671, `01`=`11` at .771; unmute tap 23:35:37.040 |
+| L0, excluded | First attempted left trial | User reported forgetting to establish Off before docking | Events around 23:37 are retained as packet observations only, not mute-reset evidence |
+| L1 | Both out, Off and silence confirmed; dock only left, then retrieve | Silence reported while docked; speech reported after retrieval, without a tap | Initial tap 23:39:21.617; `08`=`01` at 23:40:22.043/.701; `01`=`10` at 23:40:25.653; left missing 23:40:27.673; `01`=`11` at 23:41:23.243; left telemetry returns 23:41:23.343; tap counter stayed 5 |
+| L2 | Both out, Off and silence confirmed; user continues speaking while docking only left | Speech resumed around docking/lid closure; exact ordering and subsecond timing unknown | Initial tap 23:45:12.340; `08`=`01` at 23:46:00.335; `01`=`10` at 23:46:03.937; left missing 23:46:06.314; tap counter stayed 6 |
+| L2 continuation | Left remains docked; right tap; then retrieve left without another tap | Right tap stopped speech and said Off; speech resumed after left retrieval | Tap 23:48:00.742 (seq 7); `01`=`11` at 23:50:04.534; left telemetry returns 23:50:04.792; no new tap, restart or call-context command in this interval |
+| R2 | Right-only docking/retrieval, user started the action before a separate checkpoint | User reports silence both during docking and after retrieval, speech returned only after tap | Initial tap 23:52:56.374; `08`=`10` at 23:53:06.972/07.834; `01`=`01` at 23:53:11.383; right missing 23:53:13.455; returns 23:53:51.859; `01`=`11` at 23:53:53.270; final tap 23:54:22.035 |
+
+L1 and L2 differ in the reported point when speech resumed. Do not describe
+them as two identical timed docking resets. Together they establish a reported
+loss of effective mute across left-side transitions; L2 localizes one occurrence
+to docking and another to retrieval after re-muting. R2 has weaker initial-state
+control than R1 and is corroboration, not an identical controlled repetition.
+The earlier tests around 15:11-15:12 included daemon restarts and must not be
+combined with these stable-owner trials to prove a pure case-only transition.
+
+The results are consistent with microphone-role handoff or mute reset when left
+availability changes. They do not establish a permanent left master, the physical
+microphone carrying speech, the storage location of mute, or a firmware guarantee.
+The side holding the touch control does not prove which side owns audio state.
+Effective mute can be lost without a tap: counting taps is insufficient even
+when every reported tap in a particular interval is received.
+
+### Presence/charging candidate layout and verification boundary
+
+The correlation-only assessment below records the initial investigation. The
+following HAL re-verification section supersedes its extraction blocker and
+bit-versus-nibble uncertainty; physical charging-current and mute caveats remain.
+
+Raw offsets count the leading `cc` as byte 0. Hexadecimal byte values, not decimal
+numbers, are shown below. The earlier HAL notes associate request `12 01` with
+`mutex_getTwsExist` and `12 08` with `mutex_getChargingState`; that identifies the
+request family, not the precise response-field layout.
+
+| Raw response | Observed byte 5 | Correlated action | Current confidence |
+| --- | --- | --- | --- |
+| `cc 12 01` | `01` | Right unavailable, left available | Observed side correlation |
+| `cc 12 01` | `10` | Left unavailable, right available | Observed side correlation |
+| `cc 12 01` | `11` | Both available | Observed side correlation |
+| `cc 12 08` | `01` | Left docked | Docking/charging candidate, not proof of charging current |
+| `cc 12 08` | `10` | Right docked | Docking/charging candidate, not proof of charging current |
+| `cc 12 08` | `00` | Seen after right retrieval | Neither-side flag candidate |
+
+A low-nibble left/high-nibble right encoding fits these observations. A pair of
+single-bit flags (bits 0 and 4) and two nibble-valued fields are indistinguishable
+on values `00/01/10/11`; do not choose one without checking other values or the
+official parser. Byte 6 was zero in the selected trials, but earlier logs contain
+`08` reports with byte 6=`01`. Its meaning remains unknown and must not be dropped
+from evidence or silently treated as padding.
+
+Battery reports on left retrieval briefly alternated `(L,ff,caseA)` and
+`(ff,R,caseB)` before converging. The existing battery debounce retains values;
+its combined `connected` field is not a reliable case-state oracle, and neither
+battery `255` nor a receiver reconnect proves a docking cycle.
+
+Static HAL re-verification attempt (2026-09-07): no local DLL/archive or saved
+disassembly was found in the checked project, temporary, Downloads and state
+directories. The documented ASUS URL answered HEAD with HTTP 200, length
+394449221, but GET attempts including retries and HTTP/1.1 failed with curl 35
+(`TLS unexpected eof while reading`). No downloaded ZIP/DLL hash was verified.
+The hashes and VA addresses in the earlier HAL section remain historical notes,
+not independently re-established evidence for this response layout.
+
+To resume without repeating user trials:
+
+1. Obtain the official archive and verify its documented SHA-256; never execute
+   the Windows binaries. If changed, identify the new version before using VAs.
+2. Inspect `0x180039760` branches for `01` and `08`, accounting for the reader
+   removing raw report ID byte 0; raw byte 5 becomes parser offset 4.
+3. Record actual masks/shifts and byte-6 accesses, then follow assignments through
+   `0x1800809f0` to event 8 and the UI's status/charging interpretation.
+4. Preserve packet-length and invalid-domain cases in offline tests before adding
+   decoded fields. Do not infer absolute mute or add polling/unknown commands.
+
+Until that verification, `01` and `08` stay raw telemetry; no presence/charging
+runtime decoder or automatic risk notification is claimed as implemented.
+
+### HAL re-verification completed, 2026-09-07
+
+The download blocker was bypassed without disabling certificate validation:
+`curl --ipv4 --http1.1 --tlsv1.2 --tls-max 1.2` downloaded the official archive.
+This combination worked where earlier default GET requests failed; the exact
+TLS/network failure cause was not isolated by varying one parameter at a time.
+ZIP SHA-256 exactly matches `098cb50673cd247f0b1ab60c1fd7dc6361e44999e20febe7f7b403d310d82d06`.
+Extracted HAL SHA-256 exactly matches
+`c252aee03409db836aaebdd8062f6464eef2b1313fb79afa4ba0ad135009969f`.
+
+Extraction was static: ZIP -> WiX attached CAB -> x64 MSI -> internal CAB -> DLL.
+No Windows executable, installer or ASUS JavaScript was executed. The attached
+CAB SHA-1 `b74ea7795e720fb0492797508bbe878ce60209d9` and MSI SHA-1
+`66ea2aed89efa0750754f9e367fa627f9687eb27` also match the Burn manifest.
+
+| Response/field | Verified HAL processing | Evidence VA |
+| --- | --- | --- |
+| `01` raw byte 5 | Stored at protocol offset `0x73`; bit `0x01` controls first/L battery availability, bit `0x10` second/R | `0x18003982c-0x18003983a`, `0x180080b64`, `0x180080b82` |
+| `01` aggregate | Separately compares the entire byte with `0x11`; not equivalent to the per-side checks on unsupported values | `0x180080b51` |
+| `08` raw byte 5 | Stored at `0x75`; bit `0x01` first/L charging, bit `0x10` second/R charging; `0xff` explicitly produces false for both | `0x180039875-0x18003988a`, `0x1800809a1-0x1800809d3` |
+| `08` raw byte 6 | Stored at `0x76`, zero-extended unchanged into third charging slot | `0x180039875-0x18003988a`, `0x1800809d9-0x1800809dd` |
+
+Reader instructions at `0x180029094` / `0x1800290ef` remove the report ID, so raw
+byte 5 is parser offset 4, and raw byte 6 is parser offset 5. The semantic `01`
+branch does not consume raw byte 6. The status branches use `test ... 0x01` and
+`test ... 0x10`, not `0x0f` masks or shifts decoding two nibble-valued enums.
+
+The event-8 status payload begins at `0x18014b618`. Charging slots occupy indices
+1, 8, 10; battery slots occupy 2, 9, 11. The official headset SDK consumes those
+charging positions; USB caps specify `power.batteryList=["L","R","Case"]`.
+The official UI treats charging string `"1"` as true (and requires battery below
+100 for its charging display). Thus raw `08` byte 6 is used as Case charging
+status by the HAL/SDK/UI chain, not padding. The intervening native-to-JS
+serializer was not separately reverse-engineered in this pass.
+
+These facts verify the software interpretation, not electrical charging current
+or the firmware meaning of every possible value of byte 6. Preserve its raw
+value and treat unverified domains conservatively. Neither message is absolute
+microphone mute readback, and neither proves a permanent master-earbud role.
+Passive runtime decoding was subsequently implemented (2026-09-07) without new
+queries. It exposes nullable per-side presence/charging and case-charging fields,
+retains the raw bytes, and expires decoded values after 30000 monotonic ms. This
+TTL is a conservative plugin policy, not a measured device reporting period.
+Only presence masks 00/01/10/11 and charging masks 00/01/10/11/ff are interpreted;
+case byte 6 is interpreted independently only for 0/1. Unknown domains preserve
+their raw value but do not become a boolean claim. Short reports do not refresh
+the previous observation. Receiver reset clears both report families.
+Battery/connected/call/microphone state remain independent; no UI state or mute
+inference was added. With event-only delivery the new fields may legitimately
+expire while device state remains unchanged. Raw bytes then describe history.
+
+Offline acceptance includes all 256 value domains, packet lengths 0..64 with
+exact-size allocations under ASan/UBSan, independent freshness boundaries and
+an actual owner-loop expiry test covering stdout, cache and clients without new
+HID input. Removing the final owner publication makes that expiry test fail.
+
+Historical address precision: `0x18003a99e` and `0x18003ac50` are opcode-store
+instructions inside the presence and charging getter functions. The respective
+function entries are `0x18003a970` and `0x18003ac20`.
+
+Local reproducibility artifacts (temporary, may be removed on reboot):
+
+- `/tmp/opencode/cetra-asus-tls12-20260907.zip`
+- `/tmp/opencode/cetra-hal-extract-20260907/AacAudioHal_x64.dll`
+- `/tmp/opencode/cetra-hal-extract-20260907/FINDINGS.md`
+- Same directory: `reader.asm`, `parser.asm`, `status-callback.asm`, getter
+  disassemblies, extraction scripts and SDK/UI text excerpts.
+
 ## Operational finding: Omarchy hot reload
+
+2026-09-14 UI acceptance found a stale QML panel after logged local-plugin reloads:
+the removed auto-pause row still appeared while its deleted locale key fell back
+to English. One explicitly authorized shell restart loaded the current panel and
+removed that row. A reload log and a new helper PID therefore do not prove current
+QML source delivery. Verify a source-specific visible change in the running shell;
+request separate restart permission if needed. The exact cache invalidation
+mechanism was not isolated, and the packaged shell was not modified.
 
 Quickshell crash PID `1079563` was a confirmed Omarchy/Quickshell hot-reload
 issue, not a Cetra protocol crash. The local plugin edit was only the reload
@@ -528,8 +811,8 @@ Resolved statically:
 - Complete side-by-side table documented above.
 - Function 60, 61, 209 are `E_NOTIMPL` on both USB and BT.
 - `R2Clib64.dll` contains only Realtek DSP / I2C / UVC functions, not R55ES transports.
-- Complete inventory of all 16 `C_R55ES_Protocol` request opcodes confirmed no microphone
-  state getter exists.
+- The inspected `C_R55ES_Protocol` request inventory contains no confirmed
+  microphone state getter; this is a finding about the inspected HAL version.
 
 ### 3. Capture a controlled physical toggle at USB level (Completed)
 

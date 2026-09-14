@@ -4,6 +4,10 @@
 
 Contains automated regression and compliance checks for the plugin.
 
+Read README.md and ../MODULES.md for source ownership. Native fixtures snapshot
+all private C modules through source_snapshot.py; QML fixtures enumerate their
+production inputs through qml-source.js. Moving code must not remove coverage.
+
 ## Execution
 
 Run all checks from the repository root:

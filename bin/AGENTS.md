@@ -11,10 +11,13 @@
 - Generated binaries under `bin/` (`bin/cetra-status` and `bin/cetra-watch`) are **strictly untracked** (enforced by `.gitignore`).
 - Never commit binary executables to Git.
 - Binary helpers are built from source on the user's machine during `./setup`.
+- `cetra-watch.c` includes private implementation modules from `daemon/`; retain
+  that directory in clean builds. Do not compile those headers independently.
 
 ## Daemon Lifecycle
 
 - Exactly one `cetra-watch` instance must own `/dev/hidraw` (interface 3) at any time.
-- Additional shell panels or monitors connect as clients via UNIX domain socket `$XDG_RUNTIME_DIR/rog-cetra-control.sock`.
+- Shell views share the manifest service. Additional CLI clients use the UNIX
+  domain socket `$XDG_RUNTIME_DIR/rog-cetra-control.sock`.
 - Status cache is published atomically to `$XDG_RUNTIME_DIR/rog-cetra-control.status`.
-- Telemetry logs are appended to `$XDG_STATE_HOME/omarchy/rog-cetra-control.log`.
+- Telemetry logs use `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/rog-cetra-control.log`.

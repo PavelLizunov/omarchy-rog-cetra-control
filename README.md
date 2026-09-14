@@ -1,54 +1,26 @@
 # ROG Cetra Control for Omarchy
 
-Shows left, right, and case battery levels for ROG Cetra True Wireless
-SpeedNova through its USB receiver, switches Off, ANC, and Ambient modes,
-adjusts ANC levels and Adaptive ANC, configures Aura RGB lighting, voice
-prompts, in-ear detection, and displays real-time microphone status in sync with
-the headset's native voice prompts.
+Battery status, noise control, Aura lighting and headset voice-prompt settings
+for ASUS ROG Cetra True Wireless SpeedNova over its USB receiver (`0b05:1ad3`,
+interface 3). Bluetooth and other Cetra models are not supported.
 
-Supported receiver: `0b05:1ad3`.
+![ROG Cetra Control panel](preview.png)
 
-The reader sends the read-only status request `cc 12 07` to the receiver.
-The response fields are:
-
-- byte 6: left earbud battery
-- byte 7: right earbud battery
-- byte 8: case battery
-- `255`: component unavailable or in the case (filtered with debounce)
-
-Noise control uses the 64-byte HID Output Report `cc 41 08 00 00 MODE`, where
-`0` is Off, `1` is ANC, and `2` is Ambient. The selected mode is verified with
-the readback request `cc 12 25`.
-
-ANC Level and Adaptive mode:
-- ANC Level: Output Report `cc 41 0c 00 00 LEVEL` (`1`: Low, `2`: Mid, `3`: High), verified with `cc 12 2b`.
-- Smart Adaptive ANC: Output Report `cc 41 0d 00 00 <0|1>`, verified with `cc 12 2c`.
-
-Aura RGB Lighting:
-- Dual-zone Output Report `cc 51 28 00 00 <ZONE> <EFFECT> <R> <G> <B>`, committed with `cc 50 55`.
-- Effects: Off, Color Cycle, Static, Breathing, Strobing.
-
-Device Settings:
-- Voice prompt language: Output Report `cc 41 0a 00 00 <VAL>` (`1`: English, `2`: Chinese, `0`: Beeps), verified with `cc 12 28`.
-- In-Ear Auto-Pause: Output Report `cc 41 09 00 00 <VAL>`, verified with `cc 12 26`.
-
-Call context uses the standard Telephony HID output report exposed by the
-headset itself:
-
-- `05 31`: call context active
-- `05 00`: media context active
-
-This activates the headset's native call controls. The right-earbud tap then
-toggles microphone mute inside the headset and plays its normal voice prompt.
-The bar and panel display real-time microphone status (󰍬 Live / 󰍭 Muted),
-synchronized with physical tap notifications and verified through hardware ADC
-silence gating. Outside calls, the right earbud can optionally remain a media
-gesture or stay in always-active mute mode. See [RESEARCH.md](RESEARCH.md) for
-protocol captures, HAL addresses, and reverse-engineering findings.
+The manifest is a **1.6.0 candidate**. Release acceptance remains open in
+[BACKLOG.md](BACKLOG.md) and [RELEASE.md](RELEASE.md). The preview shows the same
+controls before the internal module split; no telemetry is fabricated.
 
 ## Install
 
-Install the plugin from GitHub, build the local HID reader, and enable it:
+Plugins run unsandboxed with your user permissions inside the existing Omarchy
+shell. This plugin uses a native receiver helper and persistent local diagnostics.
+Review [Security and privacy](#security-and-privacy) before installing.
+
+Runtime dependencies: Omarchy Quattro/Quickshell, `hidapi` (hidraw backend),
+`bash`, `pactl`, `jq` and GNU `timeout`. A PulseAudio-compatible audio server is
+needed for capture detection. Building needs a C compiler and `pkg-config`.
+The manual setup script can install `base-devel`, `hidapi` and `pkgconf`; it
+does not install every runtime or test dependency.
 
 ```bash
 omarchy plugin add https://github.com/PavelLizunov/omarchy-rog-cetra-control.git --yes
@@ -56,99 +28,176 @@ omarchy plugin add https://github.com/PavelLizunov/omarchy-rog-cetra-control.git
 omarchy plugin enable io.github.pavellizunov.rog-cetra-control --section right
 ```
 
-No per-headset calibration is required. The left/right case tests were only
-used once to document the receiver protocol.
+The Marketplace clones source; it does not execute setup automatically. Setup
+compiles both helpers, runs their offline selftests and validates the folder.
+It refuses binary replacement while Omarchy reports the screen locked.
 
-## Omarchy integration
+## Use
 
-- Uses the Omarchy plugin manifest schema version 1.
-- Uses theme colors and spacing from `qs.Commons` and panel components from
-  `qs.Ui`, matching first-party Omarchy widgets.
-- Supports horizontal and vertical bars. The vertical bar uses an icon-only
-  compact layout.
-- Uses a symbolic SVG recolored to the active theme instead of fixed colors.
-- Uses a shared lock and short-lived cache so multiple monitors do not poll the
-  same HID receiver concurrently.
-- Uses one long-lived `cetra-watch` owner for battery, ANC, and call context;
-  additional monitors connect through a private runtime socket.
-- Preserves the last valid values across transient USB read failures.
-- Exposes display and visibility settings through the Omarchy widget settings
-  schema.
+Click the bar icon to open the panel. Right-click or use the wheel to cycle noise
+modes. The vertical bar is icon-only; the horizontal bar can show the lowest
+reported earbud percentage.
 
-The `setup` script is intentionally manual. `omarchy plugin add` clones and
-validates third-party plugins but does not execute their installation scripts.
-The script refuses to replace generated helpers while the Omarchy lockscreen is
-active. Omarchy 4.0.2 can reload every plugin service after a local plugin file
-changes and strand the session lock; this is tracked upstream as
-[`omacom/omarchy#9441`](https://github.com/omacom/omarchy/issues/9441).
+- **Noise control:** Off, ANC and Ambient. In ANC, select Low/Mid/High or Adaptive.
+  A manual level requests Adaptive Off when its current state is On or Unknown.
+- **Battery:** percentages are last-reported values. Missing data is not proof of
+  case placement. Detailed availability/charging observations are in the tooltip.
+- **Voice prompts:** English, Chinese or Beeps; these are headset settings,
+  separate from the interface language.
+- **Keyboard:** Tab/Shift+Tab traverse controls, arrows move focus, Enter/Space
+  activate, Escape closes. O/N/A select noise mode; 1/2/3 select ANC level.
+  Russian-layout equivalents are supported for O/N/A. RGB arrows edit the channel;
+  Enter focuses Apply.
 
-## Verify
+Controls require receiver/earbud availability. Once presence has been observed,
+stale battery values cannot re-enable controls. Pending settings wait up to 48
+250 ms scheduler ticks (nominally 12 seconds), allowing the periodic ten-second
+readback cycle. A late matching reply clears the error without repeating a write.
+The selected state is readback, not an optimistic click result.
 
-```bash
-~/.config/omarchy/plugins/io.github.pavellizunov.rog-cetra-control/tests/run.sh
-```
+### Lighting
 
-The checks validate the Omarchy manifest, compile with warnings treated as
-errors, run protocol self-tests, and reject hard-coded display colors.
+Open Device settings → Lighting → Color palette. Select the theme accent or
+integer RGB channels (0–255), then press Apply or choose an effect.
 
-For UI development without hardware, launch Omarchy Shell with a fixture:
+- Changing RGB/theme selection saves preferences only.
+- Apply retains Static/Breathing/Strobing; from Off/Cycle/Unknown it selects Static.
+- **Update with theme changes** is separate and defaults Off. With it enabled,
+  explicitly apply a colored effect once per helper/connection session. Subsequent
+  accent changes are coalesced for 350 ms and sent by the shared service.
+- Enabling auto-theme explicitly reapplies an existing colored effect. Off and
+  Cycle are never replaced automatically; identical payloads are deduplicated.
+- Helper/receiver reset disarms automatic theme updates. Saved permission alone
+  sends nothing at startup; apply a colored effect again to resume.
+- The native owner may replay its last successful explicit preference on reconnect
+  within the same owner session. Restart forgets that preference.
 
-```bash
-CETRA_STATUS_FIXTURE='{"status":"ok","receiver":true,"connected":true,"left":91,"right":98,"case":100,"mode":"anc","call_context":true}' omarchy restart shell
-```
+The preview is your selection. “Last sent” means a complete helper transmission,
+not physical color readback. A partial USB write can change a zone even if the
+transaction fails. The official Off/duplicate-commit sequence still needs capture
+verification; the implemented sequence is recorded in RESEARCH.md.
 
-## Update
+### Microphone and calls
+
+**Native microphone mute is unknown to the plugin.** Follow the headset voice
+prompt. The plugin does not decode it, record PCM, infer mute from tap parity or
+offer synthetic software mute as a native hardware control.
+
+Capture metadata drives automatic call-context requests. Two inactive polls or
+three nonpositive results clear detection; the subprocess group is bounded by
+GNU timeout. Application-name matching can mistake browser recording for a call.
+The JSON `call_context` value is a requested context, not confirmed tap assignment.
+
+The manual Request call mode control and M/Ь shortcut were removed because their
+benefit outside a real call was unverified. Legacy `alwaysCallContext` is ignored.
+The proximity/auto-pause control and P/З were also removed: enabling its sensor
+setting did not establish PC playback pause over USB. Neither removal changes the
+headset's existing proximity setting. Research commands remain in daemon IPC.
+
+User trials found effective mute could be lost across left-earbud availability
+changes without another tap. Read the dated [protocol research](RESEARCH.md)
+before relying on behavior across case transitions. These are observations, not
+a firmware guarantee or absolute mute readback.
+
+## Interface language and preferences
+
+Use the language button in the header: System, English, Russian, German, French,
+Spanish, Italian, Portuguese, Simplified Chinese, Japanese or Korean. System is
+the default. Manifest settings labels remain English. All catalog keys and
+placeholders are checked; fluent-human review of every locale remains pending.
+
+Fallback is exact locale → compatible base → English → source text. Traditional
+Chinese requests use `zh-Hant`/English rather than the Simplified `zh` catalog.
+An explicit script takes precedence over region. See [locales/README.md](locales/README.md).
+
+UI preferences live in the plugin's inline entry in `~/.config/omarchy/shell.json`.
+Writes use the scoped Omarchy API. `CetraPreferences.qml` reads the saved entry
+through FileView because host snapshots and widget injections can be stale.
+Accepted writes override older completions until readback or a three-second
+reload; malformed reads preserve last valid state.
+
+**Disabling/re-enabling can reset inline preferences in the tested Omarchy host.**
+Back up your plugin entry before doing so. Ordinary popup close/reopen does not
+disable the plugin. The plugin does not maintain a second hidden settings file.
+
+## Update and remove
 
 ```bash
 omarchy plugin update io.github.pavellizunov.rog-cetra-control
 ~/.config/omarchy/plugins/io.github.pavellizunov.rog-cetra-control/setup
 ```
 
-## Remove
+After updates, verify an actual visible change. The tested host sometimes kept
+old QML despite reload logs. If needed, restart the shell when unlocked and when
+interruption of shell services is acceptable. Never launch a second Quickshell
+instance for this plugin.
 
 ```bash
 omarchy plugin disable io.github.pavellizunov.rog-cetra-control
 omarchy plugin remove io.github.pavellizunov.rog-cetra-control
 ```
 
-The plugin installs no system service and writes no persistent device data.
-The generated `bin/cetra-status` and `bin/cetra-watch` helpers live inside the
-plugin directory and are removed together with the plugin.
+There is no system service. Generated helpers are removed with the folder; logs
+remain. After the owner has stopped, remove the log and `.old` backup described
+below if you want to delete diagnostics.
 
 ## Security and privacy
 
-- Reads only the USB HID device `0b05:1ad3`.
-- Sends status requests `cc 12 07` and `cc 12 25`.
-- Sends `cc 41 08` only when the user explicitly changes noise control.
-- Sends standard Telephony HID call-context reports while a real capture stream
-  is active.
-- Does not use the network.
-- Does not change firmware, audio routing, system microphone mute, or unrelated
-  headset settings.
-- Does not collect serial numbers or other identifiers.
-- Uses owner-only runtime files and a private Unix socket under
-  `$XDG_RUNTIME_DIR`.
-- `setup` may install `base-devel`, `hidapi`, and `pkgconf` through
-  `omarchy pkg add` when they are missing.
+- One long-running owner opens receiver interface 3. Other clients use the
+  private UNIX socket, not a competing hidraw reader.
+- Runtime has no network calls. Repository/package installation and updates use
+  the network. Setup does not download or execute Windows firmware tools.
+- The helper sends the documented read queries and explicit control reports.
+  Call requests and valid session lighting replay can occur automatically; see
+  [HANDBOOK.md](HANDBOOK.md) for cadence and [RESEARCH.md](RESEARCH.md) for opcodes.
+- Settings and presence/charging expire after 30 seconds. Battery/mode lack a
+  general read-response watchdog and may remain historical.
+- Runtime socket/lock/cache use `$XDG_RUNTIME_DIR`. The fallback uses fixed names
+  under `/tmp` and remains unsafe for multi-user use. Cache replacement uses a
+  private unique temporary file and rename; that does not secure the whole path.
+- IPC validates command domains and framing. Owner sends handle partial writes,
+  disconnecting clients on backpressure. Mirror/stdout backpressure remains open.
+- Capture detection reads `pactl` metadata, not audio samples. Hardware serial
+  numbers are not collected. No system microphone mute or audio routing is changed.
+- Owner-only telemetry logs commands/RGB, gestures, battery/settings, lifecycle,
+  timestamps and raw unhandled HID bytes. This can reveal usage timing.
+- Log path: `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/rog-cetra-control.log`.
+  If unsafe/unavailable, a verified private runtime directory is tried. Files are
+  no-follow, owner/type/single-link checked and mode 0600. Checks do not validate
+  every ancestor. Old untouched backups are not retroactively repaired.
+- Above 5 MiB the log rotates to one `.old` backup. Logging is synchronous and
+  has no runtime opt-out. Shared-shell teardown remains best effort for hung
+  descendants; one passing normal exit does not cover every reload race.
 
-## Compatibility
+## Development and verification
 
-Tested with ROG Cetra True Wireless SpeedNova receiver `0b05:1ad3` on Omarchy
-Quattro. Other Cetra models and hardware revisions may use different USB IDs or
-response layouts and are not currently supported.
+[MODULES.md](MODULES.md) maps changes to source owners and tests.
+[HANDBOOK.md](HANDBOOK.md) describes architecture; [CONTRIBUTING.md](CONTRIBUTING.md)
+contains contribution rules. Historical records are not current runtime specs.
 
-## Renamed from ROG Cetra Battery
+```bash
+./tests/run.sh
+omarchy plugin validate .
+git diff --check
+```
 
-Versions through `1.2.1` used the plugin ID
-`io.github.pavellizunov.rog-cetra-battery`. The project was renamed before its
-marketplace submission because it now covers device controls as well as battery
-status. Remove the old plugin ID before installing the new one.
+Tests additionally require Python 3, Node.js, a C++ compiler, Qt6Quick/Qt6Qml/Qt6Gui
+development libraries and the installed Omarchy shell sources. Some suites still
+require `/tmp/opencode` to exist; this is temporary-path debt, not an OpenCode
+installation requirement. Tests compile in isolation and never open real HID.
+Offline suites and actual Qt checks do not replace live hardware/UI acceptance.
 
-## Trademark notice
+For offline JSON output from the already-built fixture helper:
 
-ROG, Cetra, SpeedNova, and ASUS are trademarks of ASUSTeK Computer Inc. This
-community project is not affiliated with or endorsed by ASUS.
+```bash
+CETRA_STATUS_FIXTURE='{"status":"ok","receiver":false,"microphone_state":"unknown"}' ./bin/cetra-status
+```
 
-## License
+This prints JSON; it does not preview the UI or inject fixtures into a running shell.
 
-MIT. See `LICENSE`.
+## Compatibility and license
+
+Only the SpeedNova USB receiver listed above has been tested. Versions through
+1.2.1 used `io.github.pavellizunov.rog-cetra-battery`; remove that old plugin before
+installing the renamed one. ROG, Cetra, SpeedNova and ASUS are ASUSTeK trademarks.
+This community project is not affiliated with ASUS. Source is MIT; see [LICENSE](LICENSE).

@@ -1,12 +1,14 @@
 import QtQuick
 import QtQuick.Effects
 import Quickshell
+import qs.Commons
 
 Item {
   id: root
 
-  property color color: "white"
-  property real iconSize: Math.min(width, height)
+  property string name: "cetra"
+  property color color: Color.foreground
+  property real iconSize: 24
 
   implicitWidth: iconSize
   implicitHeight: iconSize
@@ -14,9 +16,9 @@ Item {
   Image {
     id: sourceImage
     anchors.centerIn: parent
-    width: root.iconSize
-    height: root.iconSize
-    source: Qt.resolvedUrl("assets/cetra-symbolic.svg")
+    width: Math.max(0, Math.min(root.width, root.height, root.iconSize))
+    height: width
+    source: Qt.resolvedUrl("assets/" + root.name + "-symbolic.svg")
     sourceSize.width: Math.round(width * Screen.devicePixelRatio)
     sourceSize.height: Math.round(height * Screen.devicePixelRatio)
     fillMode: Image.PreserveAspectFit

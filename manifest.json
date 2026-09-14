@@ -2,15 +2,17 @@
   "schemaVersion": 1,
   "id": "io.github.pavellizunov.rog-cetra-control",
   "name": "ROG Cetra Control",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "author": "PavelLizunov",
   "license": "MIT",
   "description": "Battery, noise control, lighting, and automatic native call gestures for ROG Cetra True Wireless SpeedNova.",
   "kinds": [
-    "bar-widget"
+    "bar-widget",
+    "service"
   ],
   "entryPoints": {
-    "barWidget": "Cetra.qml"
+    "barWidget": "Cetra.qml",
+    "service": "CetraService.qml"
   },
   "barWidget": {
     "displayName": "ROG Cetra Control",
@@ -19,11 +21,23 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
+      "locale": "system",
       "showPercentage": true,
       "hideWhenReceiverMissing": true,
-      "alwaysCallContext": false
+      "useThemeColor": true,
+      "autoThemeColor": false,
+      "lightingRed": 255,
+      "lightingGreen": 255,
+      "lightingBlue": 255
     },
     "schema": [
+      {
+        "key": "locale",
+        "type": "string",
+        "label": "Interface language code",
+        "description": "Use system, en, ru, de, fr, es, it, pt, zh, ja, or ko. Unsupported languages fall back to English. This does not change headset voice prompts.",
+        "defaultValue": "system"
+      },
       {
         "key": "showPercentage",
         "type": "boolean",
@@ -37,10 +51,44 @@
         "defaultValue": true
       },
       {
-        "key": "alwaysCallContext",
+        "key": "useThemeColor",
         "type": "boolean",
-        "label": "Always keep call controls active",
+        "label": "Select theme color for lighting",
+        "defaultValue": true
+      },
+      {
+        "key": "autoThemeColor",
+        "type": "boolean",
+        "label": "Update lighting when the theme changes",
+        "description": "Opt-in; requires explicit colored lighting apply in each helper session. Off and Cycle are preserved.",
         "defaultValue": false
+      },
+      {
+        "key": "lightingRed",
+        "type": "integer",
+        "label": "Lighting red (explicit apply only)",
+        "min": 0,
+        "max": 255,
+        "step": 1,
+        "defaultValue": 255
+      },
+      {
+        "key": "lightingGreen",
+        "type": "integer",
+        "label": "Lighting green (explicit apply only)",
+        "min": 0,
+        "max": 255,
+        "step": 1,
+        "defaultValue": 255
+      },
+      {
+        "key": "lightingBlue",
+        "type": "integer",
+        "label": "Lighting blue (explicit apply only)",
+        "min": 0,
+        "max": 255,
+        "step": 1,
+        "defaultValue": 255
       }
     ]
   }

@@ -34,9 +34,8 @@ if ! command -v cc >/dev/null || ! pkg-config --exists hidapi-hidraw; then
 fi
 
 mkdir -p "$plugin_dir/bin"
-build_dir="${XDG_RUNTIME_DIR:-/tmp}/slovn-cetra-build.$$"
+build_dir="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/rog-cetra-build.XXXXXX")"
 trap 'rm -rf "$build_dir"' EXIT
-mkdir -p "$build_dir"
 
 cc -O2 -Wall -Wextra \
   -o "$build_dir/cetra-status" \
@@ -64,5 +63,5 @@ if ! lsusb -d 0b05:1ad3 >/dev/null 2>&1; then
 fi
 
 omarchy plugin validate "$plugin_dir"
-printf '%s\n' "ROG Cetra Control is ready."
+printf '%s\n' "ROG Cetra Control helpers built and plugin structure validated."
 printf '%s\n' "Enable it with: omarchy plugin enable io.github.pavellizunov.rog-cetra-control --section right"
