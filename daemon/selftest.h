@@ -17,6 +17,10 @@ static int selftest(void) {
   if (!state.receiver || !state.connected) return 1;
   if (state.left != 91 || state.right != 98 || state.case_level != 100) return 1;
   if (state.mode != 2 || state.anc_level != 2 || !state.anc_adaptive || state.voice_prompt != 1) return 1;
+  long now = monotonic_ms();
+  if (!report_fresh(&state.battery_report, now) || !report_fresh(&state.mode_report, now)) return 1;
+  if (report_fresh(&state.battery_report, state.battery_report.received_ms + DEVICE_REPORT_FRESH_MS)
+      || report_fresh(&state.mode_report, state.mode_report.received_ms + DEVICE_REPORT_FRESH_MS)) return 1;
   const unsigned char left_tap[] = {204, 112, 0, 0, 0, 0x00, 0x01, 0};
   apply_packet(NULL, &state, left_tap, sizeof(left_tap));
   if (state.tap_seq != 0) return 1;

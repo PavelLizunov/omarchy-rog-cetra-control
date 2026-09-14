@@ -22,7 +22,9 @@ for (const name of widgetFiles) {
       assert.match(match[1], /panelRoot:/, `${name}: control must have explicit keyboard/theme owner`);
   }
 }
-const expected = new Set([...widgetFiles, ...serviceFiles, 'I18n.qml', 'CetraIcon.qml']);
+const expected = new Set([...widgetFiles, ...serviceFiles, 'I18n.qml', 'CetraIcon.qml', 'MicrophoneMeter.qml']);
+assert.match(read('CetraService.qml'), /Loader \{\s*id: microphoneMeter\s*active: root.hostReady && root.connected && root.settings.showMicLevel === true/);
+assert.match(read('CetraService.qml'), /MicrophoneMeter \{ topology: audioTopology \}/);
 assert.deepEqual(fs.readdirSync(root).filter(n => n.endsWith('.qml')).sort(), [...expected].sort(),
   'All production QML modules must have an explicit test/source owner');
 const native = read('cetra-watch.c');

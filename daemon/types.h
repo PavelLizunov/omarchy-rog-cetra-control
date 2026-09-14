@@ -63,6 +63,8 @@ struct device_state {
   int tap_seq;
   struct observed_report presence_report;
   struct observed_report charging_report;
+  struct observed_report battery_report;
+  struct observed_report mode_report;
 };
 
 struct command_source {

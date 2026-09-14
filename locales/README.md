@@ -5,7 +5,8 @@
 the same formatter through `panelRoot`; no section owns another translator.
 The manifest exposes a persisted `locale` string setting, defaulting to `system`.
 Bundled languages: `en`, `ru`, `de`, `fr`, `es`, `it`, `pt`, `zh`, `ja`, `ko`. Unsupported languages fall back to English.
-Localization adds no hardware communication, process, or network request.
+Catalog loading adds no hardware communication or network request. Saving the
+locale uses the shared preferences path, including its bounded readback helper.
 
 ## Integration
 

@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Quickshell
 import qs.Commons
 import qs.Ui
 
@@ -91,8 +90,13 @@ CetraViewModel {
     Row {
       id: barContent
       anchors.centerIn: parent
-      spacing: Style.space(5)
+      spacing: root.showMicLevel && button.vertical ? Style.space(2) : Style.space(5)
       CetraIcon { iconSize: Style.bar.iconFont; color: root.barColor; anchors.verticalCenter: parent.verticalCenter }
+      MicrophoneLevel {
+        root: panelHost
+        visible: root.showMicLevel
+        anchors.verticalCenter: parent.verticalCenter
+      }
       Text {
         textFormat: Text.PlainText
         visible: root.showsPercentage
@@ -197,6 +201,23 @@ CetraViewModel {
             spacing: Style.spacing.panelGap
             visible: root.connected && root.settingsExpanded
             enabled: visible
+            SettingToggle {
+              panelRoot: root
+              width: parent.width
+              label: root.tr("microphone.showLevel", "Show microphone level")
+              value: root.showMicLevel
+              onClicked: root.setShowMicLevel(!root.showMicLevel)
+            }
+            Text {
+              textFormat: Text.PlainText
+              width: parent.width
+              visible: root.showMicLevel
+              text: root.tr("microphone.levelHelp", "Measures Cetra input only while another app uses it. Audio is not saved. Silence does not prove mute.")
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.Wrap
+            }
             LightingSection { id: lightingSection; root: panelHost; width: parent.width }
             VoiceSection { root: panelHost; width: parent.width }
           }

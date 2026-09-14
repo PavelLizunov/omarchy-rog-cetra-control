@@ -17,8 +17,23 @@ Panel {
     return current && current[name] !== undefined && current[name] !== null ? current[name] : fallback
   }
   readonly property color foreground: bar ? bar.foreground : Color.foreground
-  readonly property color accent: bar && bar.accent !== undefined ? bar.accent : Color.accent
-  readonly property color barColor: lowestLevel >= 0 && lowestLevel <= 20 ? (bar ? bar.urgent : Color.urgent) : barForeground
+  readonly property color accent: accentFor(bar)
+  function accentFor(host) {
+    return host && host.accent !== undefined ? host.accent : Color.accent
+  }
+  readonly property color warningColor: readableWarning(bar ? bar.urgent : Color.urgent, Color.popups.background, foreground)
+  readonly property color barColor: lowestLevel >= 0 && lowestLevel <= 20
+    ? readableWarning(bar ? bar.urgent : Color.urgent, Color.bar.background, barForeground) : barForeground
+  function luminance(color) {
+    var channels = [color.r, color.g, color.b].map(function (v) {
+      return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+    })
+    return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+  }
+  function readableWarning(candidate, background, fallback) {
+    var a = luminance(candidate), b = luminance(background)
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) >= 4.5 ? candidate : fallback
+  }
   readonly property color dim: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.85)
   readonly property color rule: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
@@ -27,6 +42,8 @@ Panel {
   property bool languageExpanded: false
   property string lightingFeedback: ""
   readonly property bool showPercentage: preference("showPercentage", true) === true
+  readonly property bool showMicLevel: preference("showMicLevel", false) === true
+  readonly property var microphoneLevel: service && service.microphoneLevel !== undefined ? service.microphoneLevel : null
   readonly property bool hideWhenReceiverMissing: preference("hideWhenReceiverMissing", true) === true
   readonly property string deviceStatus: service ? service.deviceStatus : "starting"
   readonly property bool receiver: service ? service.receiver : false
@@ -194,6 +211,14 @@ Panel {
   }
   function setAutoThemeColor(enabled) {
     return service ? service.setAutoThemeColor(enabled) : false
+  }
+  function setShowMicLevel(enabled) {
+    if (typeof enabled !== "boolean" || !bar || !bar.shell || typeof bar.shell.updateEntryInline !== "function") return false
+    return persistSetting("showMicLevel", enabled)
+  }
+  function microphoneLevelText() {
+    return microphoneLevel === null ? root.tr("microphone.levelUnavailable", "Mic level: no capture data")
+      : root.tr("microphone.levelValue", "Mic signal: {value}% (not mute state)", { value: Math.round(microphoneLevel * 100) })
   }
   function persistSetting(name, value) {
     if (service && typeof service.updateSetting === "function") return service.updateSetting(name, value, settings)

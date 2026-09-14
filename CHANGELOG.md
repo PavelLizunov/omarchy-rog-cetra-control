@@ -1,6 +1,33 @@
 # Changelog
 
-## Unreleased
+## 1.7.0 — release candidate
+
+- Bound shell.json acquisition before QML buffering; keep FileView watch-only.
+- Use monotonic Pulse timers and bound stalled mirror EOF drain.
+- Add CETRA_DIAGNOSTICS=0 to disable new diagnostic writes.
+- Report vendor taps without claiming delivery of Play/Pause; document the
+  continuous-capture interaction, without altering other applications.
+- Fall back to theme foreground when the warning token has insufficient text
+  contrast. Clarify Russian charging and microphone-level wording.
+
+- Observe actual PipeWire routes without periodic pactl/jq processes. Separate
+  external recording from communication capture; processors/keepalives alone no
+  longer authorize the signal meter. Mixed physical input paths fail closed.
+- Use Pulse event waiting for peaks and one-shot meter retries; bound stop time.
+- Bound owner stdout and mirror queues; validate private runtime/lock objects.
+  Setup requires explicit unlocked status and stages atomic binary replacement.
+- Add 30-second battery/mode freshness flags and reject invalid UI percentages.
+
+- Add an opt-in Cetra signal meter using an audio-only libpulse helper, shared across
+  views and gated on other capture clients. Exclude monitor feedback; distinguish
+  unavailable samples and silence from unknown native mute.
+- Pin the meter stream with Pulse/WirePlumber properties so EasyEffects needs no
+  manual exclusion on the tested host. Retry helper failures and verify the actual
+  source; add libpulse to setup dependencies.
+- Keep present earbuds visibly available when battery percentage is missing;
+  label charge unknown rather than dimming a confirmed-present earbud.
+
+## 1.6.0 — pre-release (published baseline)
 
 - Split the UI into a small entry point, view model and focused section/control
   components. Extract saved preferences and the bounded call detector from the

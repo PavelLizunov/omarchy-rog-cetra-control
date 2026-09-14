@@ -203,7 +203,7 @@ function fixture() {
 // Wiring checks tie the exercised cursor model to every actual production control.
 assert.equal((source.match(/\bButton \{/g) || []).length, 1, 'Only the shared focusable button may use raw Button');
 assert.equal((source.match(/\bToggleSwitch \{/g) || []).length, 1, 'All switches use the single-click-owner row');
-assert.equal((source.match(/\bSettingToggle \{/g) || []).length, 3);
+assert.equal((source.match(/\bSettingToggle \{/g) || []).length, 4);
 assert.doesNotMatch(source, /alwaysCallContext|setAlwaysCallContext/);
 assert.doesNotMatch(source, /settings\.autoPause|setProximity|root\.proximity/);
 {

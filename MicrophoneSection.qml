@@ -44,6 +44,16 @@ Rectangle {
       }
       Text {
         textFormat: Text.PlainText
+        width: parent.width
+        visible: root.showMicLevel
+        text: root.opened && root.showMicLevel ? root.microphoneLevelText() : ""
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.WordWrap
+      }
+      Text {
+        textFormat: Text.PlainText
         text: root.callContextActive
           ? root.tr("microphone.callGesture", "Call mode requested. Follow the headset voice prompt; tap behavior is not confirmed.")
           : root.tr("microphone.mediaGesture", "Call mode not requested. A tap may control playback.")

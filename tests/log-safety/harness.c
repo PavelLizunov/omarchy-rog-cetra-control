@@ -131,6 +131,11 @@ int main(void) {
   assert(daemon_main(1, normal) == 1 && !logging_enabled && !hid_inits);
   absent("omarchy/rog-cetra-control.log");
   mirror_only = false;
+  assert(!setenv("CETRA_DIAGNOSTICS", "0", 1));
+  assert(daemon_main(1, normal) == 1 && !logging_enabled && hid_inits == 1);
+  absent("omarchy/rog-cetra-control.log");
+  hid_inits = 0;
+  assert(!unsetenv("CETRA_DIAGNOSTICS"));
   assert(daemon_main(1, normal) == 1 && logging_enabled && hid_inits == 1);
   mode_is("omarchy/rog-cetra-control.log", 0600);
   assert(!unlink("omarchy/rog-cetra-control.log"));

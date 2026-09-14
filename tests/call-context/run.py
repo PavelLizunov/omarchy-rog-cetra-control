@@ -13,7 +13,4 @@ logic = subprocess.run(
      str(here.parent.parent / "Cetra.qml")],
     check=False, timeout=30,
 ).returncode
-tree = subprocess.run(
-    [sys.executable, "-B", str(here / "process-tree.py")], check=False, timeout=40,
-).returncode
-sys.exit(logic or tree)
+sys.exit(logic)

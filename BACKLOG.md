@@ -6,27 +6,40 @@ evidence. The detailed pre-modularization audit is preserved in
 
 ## Release status
 
-The manifest is a 1.6.0 candidate, not a published stable release. Do not overwrite
-v1.5.0. Automated checks establish their tested contracts; full release acceptance
-and an exact reviewed commit remain pending. See RELEASE.md.
+Version 1.6.0 is published as a GitHub pre-release at commit d5a687b, not a stable
+release. Do not overwrite existing tags. Automated checks passed on that snapshot;
+final modular connected-device acceptance and Marketplace submission remain
+pending. See RELEASE.md for the evidence and release URL.
+
+The user accepted the documented compatibility/test limitations and requested
+release preparation. Version 1.7.0 is the candidate. Accepted limitations below
+remain visible; this decision is not a claim that omitted tests passed.
 
 ## P0 — release acceptance
 
 | ID | Implementation / evidence | Remaining acceptance |
 | --- | --- | --- |
-| P0.1 False absolute microphone state | Removed inferred mute and manual resync. JSON stays `microphone_state: unknown`; 101-event strict and sanitizer suites pass | Preserve unknown UI on every path; no native absolute readback is known |
-| P0.2 Implicit lighting writes | Starts unknown; daemon replays only a successful explicit session preference. Auto-theme opt-in is separately session-gated; 181 mocked lighting cases and QML tests pass | Full physical case/USB replay and failure acceptance remains pending; official Off/duplicate-commit sequence remains a research limit |
-| P0.3 Fabricated settings | Nullable settings, domain checks, 30 s freshness, presence veto. 10607 parser events / 36 owner cases pass. Pending requests allow 48 × 250 ms ticks; late matches clear errors | Complete live checks across all exposed controls, absence and expiry on the final modular source |
-| P0.4 Call restart reconciliation | Startup sends current detected intent; stopped writes do not mark intent sent. Automatic capture detector retains bounded failure handling | Active-call restart with physical gesture observation remains pending; requested context is not tap/mute readback |
-| P0.5 Truthful publication | Current preview, modular documentation and protocol limits prepared | Final source/license/private-data review, exact commit, clean candidate checks and authorized publication |
+| P0.1 False absolute microphone state | Removed inferred mute and manual resync. JSON stays unknown in offline and live trials | Implementation closed; unavailable native readback is an accepted product limitation |
+| P0.2 Implicit lighting writes | Starts unknown; explicit session preference only. 181 mocked transaction cases and live effects/restart checks pass | Fresh colored case/USB replay retest deferred and accepted for this candidate; exact official Off/duplicate sequence remains a documented research limit |
+| P0.3 Fabricated settings | Nullable settings, 30 s freshness and presence veto. Parser/owner tests and live controls/case/USB pass | Implementation closed; stopped-report expiry is verified offline, not by deliberately disrupting hardware |
+| P0.4 Call restart reconciliation | Latest-owner Discord restart recovered context; user confirmed Off/On prompts; ending call stopped the meter | Passed for the recorded Discord/EasyEffects trial; requested context is not tap/mute readback |
+| P0.5 Truthful publication | Version 1.7.0, release notes and accepted limitations prepared; historical preview labeled | Delivery gate: validated source archive, exact publication commit and separately authorized publication; author confirms asset submission rights |
 
-P0 implementation fixes are not all release signoffs. Do not describe the whole
-project as release-ready while the acceptance column remains open.
+P0 runtime fixes and accepted limits are distinct from the publication gate.
+Do not claim the candidate is already published or independently verified.
 
 ## P1 — runtime and host integration
 
-- **General freshness:** presence/charging/settings expire; battery/mode have no
-  general response-age watchdog. Battery-only fallback remains before first presence.
+- **Media tap / continuous capture:** marked A/B/A trial reproduced lost native
+  Play/Pause with Voxtype keepalive capturing via EasyEffects, recovery with no
+  capture, and recurrence after restoring keepalive. Plugin context was false
+  and meter absent. See RESEARCH.md. Keepalive was restored. User explicitly
+  excluded changes to other projects/services. Gesture logs now report the
+  observation without promising media-key delivery; README documents the limit.
+
+- **General freshness:** presence/charging/settings expire; new battery_fresh and
+  mode_fresh flags expire after 30 seconds and veto stale UI. Exact hardware expiry
+  acceptance remains pending; legacy raw fields retain diagnostic history.
 - **Teardown:** one live disable/re-enable test ended the owner normally and
   started one replacement. This is not proof for a hung detector or all reload races.
 - **Host preference loss:** installed Omarchy removed inline preferences during
@@ -34,29 +47,59 @@ project as release-ready while the acceptance column remains open.
   disabling; a plugin-local disk reader cannot preserve a host-deleted entry.
 - **Hot reload:** stale QML was observed after logged reloads. Verify actual
   visible changes; obtain/retain explicit authorization for a shell restart.
-- **Call semantics:** generic browser recording may match the application-name
-  fallback. Manual request UI/M/Ь were removed; legacy alwaysCallContext is ignored.
+- **Call semantics:** generic untagged browsers no longer match the name fallback.
+  Known communication apps still use a heuristic when role metadata is absent.
+  Manual request UI/M/Ь were removed; legacy alwaysCallContext is ignored.
 - **Multimonitor:** shared-state offline coverage exists; monitor removal and
   concurrent live controls on multiple displays are not fully verified.
+  User has no second monitor and explicitly requested leaving this open.
+- **Suspend/resume:** user deferred the live trial as inconvenient; keep OPEN.
 
 ## P2 — transport, filesystem and resource limits
 
-- Fixed `/tmp` runtime fallback still needs an owner-private directory policy.
-- Mirror forwarding and stdout backpressure are not lossless/fully bounded.
-- Log/cache file hardening has offline coverage; every existing ancestor is not
-  validated, logging is synchronous and has no runtime opt-out.
+- Shared `/tmp` fallback removed; private runtime root and lock validation added.
+  Descriptor-relative protection against concurrent same-user path changes remains open.
+- Owner stdout and mirror buffers are bounded; owner blocked/partial output passes
+  sanitizer tests. Real private mirror backpressure/ordered EOF drain passes;
+  stalled EOF drain has a two-second deadline.
+- Log/cache file hardening includes ancestor checks. `CETRA_DIAGNOSTICS=0` disables
+  new log writes. Logging/cache remains synchronous; pathological filesystem stalls
+  are an explicit remaining constraint, not a claim of bounded I/O latency.
 - HID open failure still collapses absence, permissions and busy failures.
-- Missing-battery counters are not saturated; invalid battery domains and mask
-  semantics need a stricter contract before changing behavior.
-- FileView reads the host config without an input byte cap. Malformed reads keep
-  last valid preferences; schema validation and deletion behavior need future work.
+- Missing-battery counters saturate at two; UI rejects invalid battery domains.
+  Hardware mask interpretation remains a research constraint.
+- Host config is read by the existing cetra-status helper with a 1 MiB pre-output
+  limit and three-second deadline. FileView only watches. Reads are serialized
+  and stale generations rejected. User confirmed language/option persistence
+  after the new reader was installed and the shell restarted.
 
 ## P3 — presentation and tests
 
-- Final modular live rendering of controls needs available earbuds. The latest
-  module-load check covered the honest unavailable state with one owner.
-- Full locale/RTL, modifier keys, screen-reader and light/dark contrast acceptance
-  remain incomplete. Never treat placeholder equality as fluent-human review.
+- Unreleased opt-in microphone meter uses a libpulse peak helper. Exact
+  source/link gates and self-exclusion pass offline tests. Live Discord capture
+  produced one meter and a nonzero level; opting out removed its stream without
+  stopping Discord. Marked call-exit and restart trials passed. This does not close
+  native mute research.
+- EasyEffects rerouting is prevented on the tested PipeWire 1.6.8/WirePlumber
+  host by node.dont-move plus the Pulse flags. The helper checks the actual
+  source and exits on mismatch. Live peaks, unchanged Discord routes and EOF /
+  opt-out teardown passed; no manual EasyEffects exclusion was added. Physical
+  USB recovery passed; ending the last admitted endpoint removed the meter even
+  though the existing keepalive remained. See ACCEPTANCE-2026-09-14.md.
+- Endpoint admission now excludes processing-only/keepalive routes. Live owned
+  Production capture started one meter without call context; stopping it removed
+  the meter despite the pre-existing keepalive. Real Discord call and restart
+  acceptance passed with user-confirmed native Off/On prompts and level movement.
+- Battery observation 2026-09-14: left battery became ff while fresh presence
+  remained 11. UI separates availability from unknown percentage; reporting loss
+  remains unresolved and no stale value is fabricated.
+
+- Latest-owner USB/case transitions, all ANC levels/modes, voice settings and
+  physical lighting effects were exercised. Evidence is in ACCEPTANCE-2026-09-14.md.
+- Basic live keyboard traversal/activation/Escape and RGB editing passed by user
+  confirmation. Full locale/RTL, screen-reader and rendered light/dark contrast
+  remain incomplete. Warning contrast now has a theme-token fallback; never treat
+  placeholder equality as fluent-human review.
 - Test artifacts require `/tmp/opencode`; portable temporary roots are deferred.
 - Offline QML tests inspect production functions, but do not prove Qt signal
   ordering or component ownership. Keep live checks after extraction/refactoring.

@@ -25,7 +25,7 @@ Column {
           name: modelData.icon
           iconSize: Style.font.display
           color: root.foreground
-          opacity: modelData.value === null ? 0.4 : 1
+          opacity: modelData.present === true || modelData.value !== null ? 1 : 0.4
         }
         Text {
           textFormat: Text.PlainText
@@ -42,7 +42,7 @@ Column {
           width: parent.width
           text: root.levelText(modelData.value)
           horizontalAlignment: Text.AlignHCenter
-          color: modelData.value !== null && Number(modelData.value) <= 20 ? (root.bar ? root.bar.urgent : Color.urgent) : root.foreground
+          color: modelData.value !== null && Number(modelData.value) <= 20 ? root.warningColor : root.foreground
           font.family: root.fontFamily
           font.pixelSize: modelData.value === null ? Style.font.bodySmall : Style.font.heading
           font.bold: modelData.value !== null
@@ -51,7 +51,9 @@ Column {
           textFormat: Text.PlainText
           width: parent.width
           visible: text !== ""
-          text: root.batteryStatusText(modelData.present, modelData.charging, modelData.isCase)
+          text: modelData.present === true && modelData.value === null
+            ? root.tr("battery.presentNoLevel", "Available; battery unknown")
+            : root.batteryStatusText(modelData.present, modelData.charging, modelData.isCase)
           horizontalAlignment: Text.AlignHCenter
           color: root.dim
           font.family: root.fontFamily
@@ -65,7 +67,7 @@ Column {
           Rectangle {
             height: parent.height
             width: parent.width * Math.max(0, Math.min(100, Number(modelData.value || 0))) / 100
-            color: modelData.value !== null && Number(modelData.value) <= 20 ? (root.bar ? root.bar.urgent : Color.urgent) : root.foreground
+            color: modelData.value !== null && Number(modelData.value) <= 20 ? root.warningColor : root.foreground
             Behavior on width { NumberAnimation { duration: 150 } }
           }
         }

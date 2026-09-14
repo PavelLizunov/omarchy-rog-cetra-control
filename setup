@@ -3,14 +3,13 @@
 set -euo pipefail
 
 plugin_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-helpers_changed=false
+install_tmp=""
 
 ensure_shell_unlocked() {
   local status
-  status="$(omarchy-shell lock status 2>/dev/null || true)"
-  status="${status//[[:space:]]/}"
-  if [[ "$status" == *'"locked":true'* || "$status" == *'"requested":true'* || "$status" == *'"secure":true'* ]]; then
-    printf '%s\n' "Refusing to update a local plugin while the Omarchy lockscreen is active." >&2
+  status="$(timeout 3s omarchy-shell lock status 2>/dev/null)" || status=""
+  if [[ -z "$status" ]] || ! jq -e 'type == "object" and .locked == false and .requested == false and .secure == false' <<<"$status" >/dev/null 2>&1; then
+    printf '%s\n' "Cannot confirm that the Omarchy session is unlocked; refusing helper replacement." >&2
     printf '%s\n' "Unlock the session first (Omarchy issue #9441)." >&2
     exit 1
   fi
@@ -21,21 +20,33 @@ install_if_changed() {
   local target="$2"
   if [[ -e "$target" ]] && cmp -s "$source" "$target"; then return; fi
   ensure_shell_unlocked
-  mv -f "$source" "$target"
-  helpers_changed=true
+  install_tmp="$(mktemp "$plugin_dir/bin/.cetra-install.XXXXXX")"
+  install -m 755 "$source" "$install_tmp"
+  ensure_shell_unlocked
+  mv -f "$install_tmp" "$target"
+  install_tmp=""
+  # Linux retains the replaced executable as "(deleted)" for running children.
+  # Signal only this checkout's helper, including that exact retained path.
+  local pid executable
+  while read -r pid; do
+    executable="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+    if [[ "$executable" == "$target" || "$executable" == "$target (deleted)" ]]; then
+      kill -TERM "$pid" 2>/dev/null || true
+    fi
+  done < <(pgrep -x "${target##*/}" || true)
 }
 
 ensure_shell_unlocked
 
 omarchy plugin validate "$plugin_dir"
 
-if ! command -v cc >/dev/null || ! pkg-config --exists hidapi-hidraw; then
-  omarchy pkg add base-devel hidapi pkgconf
+if ! command -v cc >/dev/null || ! pkg-config --exists hidapi-hidraw libpulse; then
+  omarchy pkg add base-devel hidapi libpulse pkgconf
 fi
 
 mkdir -p "$plugin_dir/bin"
 build_dir="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/rog-cetra-build.XXXXXX")"
-trap 'rm -rf "$build_dir"' EXIT
+trap 'rm -rf "$build_dir"; if [[ -n "$install_tmp" ]]; then rm -f "$install_tmp"; fi' EXIT
 
 cc -O2 -Wall -Wextra \
   -o "$build_dir/cetra-status" \
@@ -47,16 +58,15 @@ cc -O2 -Wall -Wextra \
   $(pkg-config --cflags --libs hidapi-hidraw)
 chmod 755 "$build_dir/cetra-status"
 chmod 755 "$build_dir/cetra-watch"
+cc -O2 -Wall -Wextra -Werror -o "$build_dir/cetra-peak" "$plugin_dir/cetra-peak.c" $(pkg-config --cflags --libs libpulse) -lm
+chmod 755 "$build_dir/cetra-peak"
+"$build_dir/cetra-peak" --selftest >/dev/null
 "$build_dir/cetra-status" --selftest >/dev/null
 "$build_dir/cetra-watch" --selftest >/dev/null
 install_if_changed "$build_dir/cetra-status" "$plugin_dir/bin/cetra-status"
 install_if_changed "$build_dir/cetra-watch" "$plugin_dir/bin/cetra-watch"
 
-if $helpers_changed; then
-  while read -r pid; do
-    [[ "$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)" == "$plugin_dir/bin/cetra-watch" ]] && kill -TERM "$pid" 2>/dev/null || true
-  done < <(pgrep -x cetra-watch || true)
-fi
+install_if_changed "$build_dir/cetra-peak" "$plugin_dir/bin/cetra-peak"
 
 if ! lsusb -d 0b05:1ad3 >/dev/null 2>&1; then
   printf '%s\n' "ROG Cetra SpeedNova receiver 0b05:1ad3 is not connected." >&2

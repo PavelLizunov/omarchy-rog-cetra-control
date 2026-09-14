@@ -13,15 +13,18 @@ do not load the entire repository by default. Protocol evidence is in RESEARCH.m
 | ANC modes, manual levels, Adaptive | `NoiseSection.qml` | View model → service; `tests/service-lifecycle/run.js` |
 | Language picker | `LanguageSection.qml` | View model → preferences; `tests/i18n/run.js` |
 | Microphone information | `MicrophoneSection.qml` | Unknown mute only; microphone-state contract tests |
+| Audio topology and endpoint/call classification | `AudioTopology.qml` | Service, CallDetector, MicrophoneMeter; `tests/audio-topology.js` |
+| Optional input peak meter | `MicrophoneMeter.qml` | Service Loader; topology admission; `tests/microphone-meter.js` |
+| Bar signal display | `MicrophoneLevel.qml` | Nullable level; no mute inference; `tests/microphone-meter.js` |
 | Lighting effects | `LightingSection.qml` | Service's last-sent effect; lighting-color tests |
 | RGB inputs, Apply, auto-theme opt-in | `LightingPalette.qml` | View model → service; lighting-color and Qt layout tests |
 | Headset voice language | `VoiceSection.qml` | Verified protocol enums; service-lifecycle tests |
 | Wrapping button / nullable toggle | `ControlButton.qml`, `SettingToggle.qml` | Explicit `panelRoot` keyboard/theme dependency; Qt and live focus checks |
 | SVG recoloring | `CetraIcon.qml` | `assets/`; symbolic white masks, runtime theme color |
 | Locale loading and fallback | `I18n.qml`, `locales/index.json` | One instance per view; `tests/i18n/run.js` |
-| Persisted UI preferences | `CetraPreferences.qml` | Base of service; scoped shell update API + FileView readback |
+| Persisted UI preferences | `CetraPreferences.qml` | Scoped shell API + watch-only FileView + bounded cetra-status reader |
 | Watcher lifecycle, status, pending requests, auto-theme | `CetraService.qml` | Manifest service; service-lifecycle and lighting-color tests |
-| Audio metadata probe / timeout | `CallDetector.qml` | One child of service; call-context and process-tree tests |
+| Audio communication settlement | `CallDetector.qml` | One child of service; event call-context tests |
 
 Sections receive the explicit `root` view-model reference. They own layout, not
 HID or helper processes. Controls receive `panelRoot`, which supplies the common
@@ -44,7 +47,8 @@ calls before compilation. They are not a public C library or standalone headers.
 | Socket fan-out and mirror | `daemon/ipc.h` | ipc-safety; owner fixtures |
 | Log permissions, rotation and cache replacement | `daemon/files.h` | log-safety |
 | `--selftest` | `daemon/selftest.h` | `tests/run.sh`; no HID access |
-| Offline fixture-printing CLI | `cetra-status.c` | `--selftest`, `CETRA_STATUS_FIXTURE` |
+| Settings readback and offline fixture CLI | `cetra-status.c` | `--read-settings`, `tests/settings-input.py`, `--selftest`, fixture env |
+| Audio-only peak capture, source pinning, EOF teardown | `cetra-peak.c` | `MicrophoneMeter.qml`; `--selftest`, `tests/peak-client.py`, authorized `tests/peak-live.py` |
 | Local compilation/deployment | `setup` | Isolated two-run setup check; lock guard |
 
 Include order is explicit in `cetra-watch.c`: types → protocol → files → reports

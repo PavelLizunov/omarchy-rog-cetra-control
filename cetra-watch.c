@@ -49,7 +49,7 @@ static int owner(int server_fd) {
     int ready = poll(fds, 2 + MAX_CLIENTS, 50);
     if (ready < 0 && errno != EINTR) break;
     if (ready > 0 && (fds[0].revents & POLLIN)) {
-      while (true) {
+      for (int admission = 0; admission < MAX_CLIENTS; admission++) {
         int client = accept4(server_fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
         if (client < 0) break;
         int slot = -1;
@@ -239,16 +239,28 @@ int main(int argc, char **argv) {
   signal(SIGPIPE, SIG_IGN);
   signal(SIGINT, stop_running);
   signal(SIGTERM, stop_running);
+  if (make_nonblocking(STDOUT_FILENO) != 0) return 1;
   char socket_path[512], lock_path[512];
   if (!runtime_path(socket_path, sizeof(socket_path), "rog-cetra-control.sock")
       || !runtime_path(lock_path, sizeof(lock_path), "rog-cetra-control.owner.lock")) return 1;
-  int lock_fd = open(lock_path, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+  const char *runtime = getenv("XDG_RUNTIME_DIR");
+  struct stat runtime_stat;
+  if (!runtime || !safe_ancestors(runtime) || lstat(runtime, &runtime_stat) != 0
+      || !S_ISDIR(runtime_stat.st_mode) || runtime_stat.st_uid != geteuid()
+      || (runtime_stat.st_mode & 0777) != 0700) return 1;
+  int lock_fd = open(lock_path, O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK, 0600);
   if (lock_fd < 0) return 1;
+  struct stat lock_stat;
+  if (fstat(lock_fd, &lock_stat) != 0 || !S_ISREG(lock_stat.st_mode)
+      || lock_stat.st_uid != geteuid() || lock_stat.st_nlink != 1 || fchmod(lock_fd, 0600) != 0) {
+    close(lock_fd); return 1;
+  }
   if (flock(lock_fd, LOCK_EX | LOCK_NB) != 0) {
     close(lock_fd);
     return mirror(socket_path);
   }
-  logging_enabled = true;
+  const char *logging = getenv("CETRA_DIAGNOSTICS");
+  logging_enabled = !logging || strcmp(logging, "0") != 0;
   log_event("DAEMON: starting (PID %ld)", (long)getpid());
   unlink(socket_path);
   int server_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);

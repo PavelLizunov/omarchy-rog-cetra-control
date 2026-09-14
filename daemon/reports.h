@@ -23,6 +23,8 @@ static void reset_receiver_state(struct device_state *state) {
   invalidate_settings(state);
   state->presence_report = (struct observed_report){0};
   state->charging_report = (struct observed_report){0};
+  state->battery_report = (struct observed_report){0};
+  state->mode_report = (struct observed_report){0};
   // An explicitly requested lighting preference belongs to this owner session.
   // Preserve it across transport resets, but never invent one on reconnect.
 }
@@ -40,6 +42,7 @@ static void apply_packet(hid_device *device, struct device_state *state, const u
     };
     log_event("CHARGING_REPORT: raw=0x%02x case_raw=0x%02x", packet[5], packet[6]);
   } else if (size >= 9 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x07) {
+    state->battery_report = (struct observed_report){.seen = true, .received_ms = monotonic_ms()};
     state->receiver = true;
     int prev_left = state->left;
     int prev_right = state->right;
@@ -49,14 +52,14 @@ static void apply_packet(hid_device *device, struct device_state *state, const u
       state->left = packet[6];
       state->left_missing = 0;
     } else {
-      state->left_missing++;
+      if (state->left_missing < 2) state->left_missing++;
       if (state->left_missing >= 2) state->left = -1;
     }
     if (packet[7] <= 100) {
       state->right = packet[7];
       state->right_missing = 0;
     } else {
-      state->right_missing++;
+      if (state->right_missing < 2) state->right_missing++;
       if (state->right_missing >= 2) state->right = -1;
     }
     state->case_level = packet[8] <= 100 ? packet[8] : -1;
@@ -71,6 +74,7 @@ static void apply_packet(hid_device *device, struct device_state *state, const u
     }
   } else if (size >= 6 && packet[0] == 0xcc && packet[1] == 0x12 && packet[2] == 0x25) {
     if (packet[5] <= 2) {
+      state->mode_report = (struct observed_report){.seen = true, .received_ms = monotonic_ms()};
       int prev_mode = state->mode;
       state->mode = packet[5];
       if (state->mode == state->mode_desired) state->mode_queries_left = 0;
@@ -130,7 +134,7 @@ static void apply_packet(hid_device *device, struct device_state *state, const u
         if (state->tap_seq < INT_MAX) state->tap_seq++;
         log_event("GESTURE: right earbud single-tap in call observed (seq=%d, microphone_state=unknown)", state->tap_seq);
       } else {
-        log_event("GESTURE: right earbud single-tap outside call -> media play/pause (microphone_state=unknown)");
+        log_event("GESTURE: right earbud single-tap observed outside requested call (media-key delivery unconfirmed, microphone_state=unknown)");
       }
     } else {
       log_event("GESTURE: earbud=%s (%d) gesture=%d sub=%d (raw: %s)",
@@ -184,7 +188,8 @@ static void format_state(char *line, size_t size, const struct device_state *sta
       "\"call_context\":%s,\"tap_seq\":%d,\"microphone_state\":\"unknown\","
       "\"left_present\":%s,\"right_present\":%s,"
       "\"left_charging\":%s,\"right_charging\":%s,\"case_charging\":%s,"
-      "\"presence_raw\":%s,\"charging_raw\":%s,\"case_charging_raw\":%s}\n",
+      "\"presence_raw\":%s,\"charging_raw\":%s,\"case_charging_raw\":%s,"
+      "\"battery_fresh\":%s,\"mode_fresh\":%s}\n",
       state->receiver ? "true" : "false", state->connected ? "true" : "false",
       left, right, case_level, mode_name(state->mode),
       anc_level, !report_fresh(&state->anc_adaptive_report, now) ? "null" : state->anc_adaptive ? "true" : "false",
@@ -197,5 +202,7 @@ static void format_state(char *line, size_t size, const struct device_state *sta
       !charging_valid ? "null" : charging->raw != 0xff && (charging->raw & 0x01) ? "true" : "false",
       !charging_valid ? "null" : charging->raw != 0xff && (charging->raw & 0x10) ? "true" : "false",
       !case_valid ? "null" : charging->extra == 1 ? "true" : "false",
-      presence_raw, charging_raw, case_charging_raw);
+      presence_raw, charging_raw, case_charging_raw,
+      report_fresh(&state->battery_report, now) ? "true" : "false",
+      report_fresh(&state->mode_report, now) ? "true" : "false");
 }

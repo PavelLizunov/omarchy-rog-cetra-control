@@ -11,6 +11,14 @@ Item {
   readonly property bool hostReady: shell !== null && manifest !== null && pluginRegistry !== null
   property var inlineSettings: null
   property var pendingPreferences: ({})
+  readonly property string settingsCommand: decodeURIComponent(Qt.resolvedUrl("bin/cetra-status").toString().replace("file://", ""))
+  property bool settingsReadPending: false
+  property int settingsReadGeneration: 0
+  onHostReadyChanged: {
+    settingsReadGeneration++
+    if (hostReady) queueSettingsRead()
+    else { settingsReadPending = false; settingsReadDelay.stop(); settingsReader.running = false }
+  }
   readonly property var settings: inlineSettings !== null ? inlineSettings : hostSettings
   readonly property var hostSettings: {
     if (!hostReady) return {}
@@ -34,16 +42,24 @@ Item {
     if (!Object.keys(pending).length) preferenceReadback.stop()
   }
   function applySavedConfig(text) {
+    if (text.length > 1048576) return
     var config
     try { config = JSON.parse(text) } catch (error) { return }
     if (!config || config.version !== 1 || !manifest) return
     var layout = config.bar && config.bar.layout
+    if (!layout || typeof layout !== "object" || Array.isArray(layout)) return
+    for (var name of ["left", "center", "right"])
+      if (layout[name] !== undefined && !Array.isArray(layout[name])) return
     for (var section of ["left", "center", "right"]) {
       var entries = layout && layout[section]
       if (!Array.isArray(entries)) continue
       for (var entry of entries)
         if (entry && entry.id === manifest.id) { syncSettings(entry); return }
     }
+    // A valid host document without our entry means removal, not stale settings.
+    pendingPreferences = ({})
+    inlineSettings = ({})
+    preferenceReadback.stop()
   }
   function updateSetting(name, value, fallback) {
     if (!hostReady || typeof shell.updateEntryInline !== "function") return false
@@ -57,22 +73,51 @@ Item {
     }
     return changed
   }
+  function queueSettingsRead() {
+    if (!hostReady) return
+    settingsReadPending = true
+    settingsReadDelay.restart()
+  }
   FileView {
     id: savedConfig
     path: root.hostReady ? Quickshell.env("HOME") + "/.config/omarchy/shell.json" : ""
     watchChanges: true
+    preload: false
     blockLoading: false
     blockAllReads: false
     printErrors: false
-    onFileChanged: reload()
-    onLoaded: root.applySavedConfig(text())
+    onFileChanged: root.queueSettingsRead()
+  }
+  Process {
+    id: settingsReader
+    property int generation: -1
+    command: [root.settingsCommand, "--read-settings"]
+    stdout: StdioCollector { id: settingsOutput; waitForEnd: true }
+    onExited: function (exitCode) {
+      if (root.hostReady && generation === root.settingsReadGeneration && exitCode === 0)
+        root.applySavedConfig(settingsOutput.text)
+    }
+    onRunningChanged: {
+      if (!running && root.settingsReadPending && root.hostReady) settingsReadDelay.restart()
+    }
+  }
+  Timer {
+    id: settingsReadDelay
+    interval: 100
+    onTriggered: {
+      if (root.hostReady && root.settingsReadPending && !settingsReader.running) {
+        root.settingsReadPending = false
+        settingsReader.generation = root.settingsReadGeneration
+        settingsReader.running = true
+      }
+    }
   }
   Timer {
     id: preferenceReadback
     interval: 3000
     onTriggered: {
-      pendingPreferences = ({})
-      savedConfig.reload()
+      root.pendingPreferences = ({})
+      root.queueSettingsRead()
     }
   }
 }

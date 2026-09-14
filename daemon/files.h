@@ -1,12 +1,30 @@
 // Private runtime paths, telemetry and atomic status-cache publication.
 static bool runtime_path(char *target, size_t size, const char *name) {
   const char *runtime = getenv("XDG_RUNTIME_DIR");
-  if (!runtime || !*runtime) runtime = "/tmp";
+  if (!runtime || runtime[0] != '/') return false;
   int length = snprintf(target, size, "%s/%s", runtime, name);
   return length >= 0 && (size_t)length < size;
 }
 
 static bool logging_enabled = false;
+
+static bool safe_ancestors(const char *path) {
+  char prefix[512];
+  size_t length = strlen(path);
+  if (!length || length >= sizeof(prefix) || path[0] != '/') return false;
+  memcpy(prefix, path, length + 1);
+  for (size_t i = 1; i < length; i++) {
+    if (prefix[i] != '/') continue;
+    prefix[i] = '\0';
+    struct stat st;
+    bool ok = lstat(prefix, &st) == 0 && S_ISDIR(st.st_mode)
+      && (st.st_uid == 0 || st.st_uid == geteuid())
+      && (!(st.st_mode & 0022) || (st.st_uid == 0 && (st.st_mode & S_ISVTX)));
+    prefix[i] = '/';
+    if (!ok) return false;
+  }
+  return true;
+}
 
 static bool log_path(char *target, size_t size) {
   const char *state = getenv("XDG_STATE_HOME");
@@ -39,7 +57,7 @@ static int open_log_directory(const char *path, int create_depth, bool private) 
     if (result != 0 && error != EEXIST) return -1;
     if (lstat(path, &before) != 0) return -1;
   }
-  if (!S_ISDIR(before.st_mode) || before.st_uid != geteuid()
+  if (!safe_ancestors(path) || !S_ISDIR(before.st_mode) || before.st_uid != geteuid()
       || (before.st_mode & 0022) || (private && (before.st_mode & 0777) != 0700)) return -1;
   int fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
   if (fd < 0) return -1;

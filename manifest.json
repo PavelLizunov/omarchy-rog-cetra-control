@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.pavellizunov.rog-cetra-control",
   "name": "ROG Cetra Control",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "author": "PavelLizunov",
   "license": "MIT",
-  "description": "Battery, noise control, lighting, and automatic native call gestures for ROG Cetra True Wireless SpeedNova.",
+  "description": "Battery, noise control, lighting, optional microphone level, and capture-driven call context for ROG Cetra True Wireless SpeedNova.",
   "kinds": [
     "bar-widget",
     "service"
@@ -16,13 +16,14 @@
   },
   "barWidget": {
     "displayName": "ROG Cetra Control",
-    "description": "Battery status, noise control, and automatic native call gestures for ROG Cetra True Wireless SpeedNova.",
+    "description": "Battery status, noise control, microphone level, and capture-driven call context for ROG Cetra True Wireless SpeedNova.",
     "category": "Audio",
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
       "locale": "system",
       "showPercentage": true,
+      "showMicLevel": false,
       "hideWhenReceiverMissing": true,
       "useThemeColor": true,
       "autoThemeColor": false,
@@ -37,6 +38,13 @@
         "label": "Interface language code",
         "description": "Use system, en, ru, de, fr, es, it, pt, zh, ja, or ko. Unsupported languages fall back to English. This does not change headset voice prompts.",
         "defaultValue": "system"
+      },
+      {
+        "key": "showMicLevel",
+        "type": "boolean",
+        "label": "Show microphone signal level",
+        "description": "Opt-in audio peak capture while another app uses Cetra. No recording is saved; silence is not native mute readback. Requires the libpulse helper built by setup.",
+        "defaultValue": false
       },
       {
         "key": "showPercentage",

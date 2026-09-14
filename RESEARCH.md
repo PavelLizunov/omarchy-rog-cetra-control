@@ -41,6 +41,16 @@ runtime implementation has passed tests.
 
 ## Reproduced commands
 
+### Present earbud with unavailable battery, 2026-09-14
+
+The user reported both earbuds in use while the left percentage was missing.
+Owner telemetry last showed left=89 at 07:55:31.600; at 07:56:20.316 battery
+readback was L=ff/R=60/Case=55 (hex), while later presence reports remained 11.
+Later owner startup also received L=ff. This is missing battery telemetry despite
+reported availability, not evidence the earbud is absent or empty. The UI keeps
+the present icon active and labels charge unknown. No percentage is reconstructed
+from the other side, PCM, presence bits or old logs.
+
 ### Battery
 
 Host request:
@@ -60,7 +70,8 @@ Response fields:
 - byte 6: left earbud battery;
 - byte 7: right earbud battery;
 - byte 8: case battery;
-- `255`: component unavailable or in the case.
+- `255`: battery value unavailable. This does not establish physical case placement;
+  later trials also observed it with confirmed presence.
 
 An unsolicited `cc 12 09` packet also carries device-status/battery values. In
 the 2026-09-02 live trace it appeared when the next regular `cc 12 07` response
@@ -251,7 +262,12 @@ Concurrent Consumer Control report `0x0c` (2 bytes):
 - `0c 10`: `Usage: Next Track`
 - `0c 00`: Key release
 
-#### Gesture behavior matrix:
+#### Historical gesture behavior matrix (conditional observations):
+
+These observations are not unconditional firmware guarantees. The later
+continuous-capture trial below reproduced missing media-key delivery despite
+call_context=false. Context requests, vendor tap reports and Consumer keys are
+separate evidence.
 | Earbud | Gesture | Packet Payload | Context | Hardware Behavior |
 |---|---|---|---|---|
 | Left (`00`) | Single tap | `cc 70 .. 00 01` | Any | Emits `0c 08` (`KEY_PLAYPAUSE`). Mic untouched. |
@@ -267,8 +283,10 @@ toggles the headset's internal microphone mute and plays its native
 `microphone off/on` prompt. Outside calls (`05 00`), right-earbud tap is a media
 gesture (`KEY_PLAYPAUSE`), which pauses/resumes active media without muting.
 
-Automatic call-context detection is triggered when Discord, Steam, Telegram,
-Zoom, or a WebRTC stream uses the microphone, or permanently via "Always Mute Gesture".
+Historical implementation used application-name capture matching and offered
+"Always Mute Gesture". The persistent override was subsequently removed. Current
+automatic requests require a verified Cetra capture path and communication
+classification; see HANDBOOK.md. Neither policy proves native mute state.
 
 ### Right tap and Consumer Play/Pause, 2026-09-13
 
@@ -787,6 +805,67 @@ trigger. Upstream issue: <https://github.com/omacom/omarchy/issues/9441>.
 The setup script must not replace helper binaries while
 `omarchy-shell lock status` reports `locked`, `requested`, or `secure` as true.
 No new coredump was observed after adding that guard.
+
+## Audio peak routing: 2026-09-14
+
+This is audio-server evidence, not native mute evidence. The installed host had
+libpulse 17.0-98-gb096 and PipeWire 1.6.8. EasyEffects and Discord were running.
+
+- A libpulse peak stream with PA_STREAM_DONT_MOVE alone was redirected to
+  easyeffects_source. Device-name validation rejected it before numeric output.
+- Installed WirePlumber `scripts/linking/find-defined-target.lua`, lines 36–68,
+  ignores metadata target overrides when node.dont-move=true. PipeWire's Pulse
+  PA_STREAM_DONT_MOVE handling supplies dont-reconnect, which is not equivalent.
+- Adding node.dont-move=true retained the physical Cetra source. The Pulse
+  auto-suspend flag still left the stream suspended and its link paused despite
+  the physical source actively feeding EasyEffects. Removing that flag allowed
+  peaks. Setting node.passive=in-follow retained working capture. Current upstream
+  capture handling also uses in-follow for dont_inhibit_auto_suspend; installed
+  1.6.8 exposed passive=true when given that Pulse flag.
+- The final helper uses peak detection, DONT_MOVE, dont-move/dont-fallback and
+  in-follow. An eight-second isolated trial produced 156 numeric frames / 160,
+  range 0.060–0.704 on the visual cube-root scale. Its source was Cetra; existing
+  streams had unchanged source indices. Closing stdin exited zero and removed
+  only its stream. Installed opt-out likewise removed the helper/stream while
+  Discord remained on easyeffects_source. No EasyEffects settings were edited.
+- The installed panel displayed 25%, with Unknown native mute. Complete external
+  capture cessation and physical USB reconnect were not exercised in this trial.
+  EasyEffects/keepalive links can keep the physical input externally active even
+  after a call ends; this is not the meter sustaining its own admission gate.
+
+Sources consulted (upstream master is supporting provenance, not a claim that
+the installed binary exactly matches it):
+- https://raw.githubusercontent.com/pulseaudio/pavucontrol/master/src/mainwindow.cc
+- https://raw.githubusercontent.com/PipeWire/pipewire/master/src/modules/module-protocol-pulse/pulse-server.c
+- https://raw.githubusercontent.com/wwmm/easyeffects/master/src/pw_node_manager.cpp
+- `/usr/share/wireplumber/scripts/linking/find-defined-target.lua`
+
+## Continuous capture suppresses media gestures: 2026-09-14
+
+A marked A/B/A trial reproduced missing Play/Pause outside a requested call:
+
+1. With voxtype-mic-keepalive.service capturing easyeffects_source to /dev/null,
+   call_context was false and no Cetra meter was running. Left/right vendor tap
+   reports arrived, but no accompanying Consumer 0x08 report was logged; user
+   reported neither tap controlled video. A separately authorized native Omarchy
+   media playPause command changed Chromium from Playing to Paused.
+2. User authorized temporary stop of that keepalive service. Source-output list
+   became empty. Both media taps worked according to the user. Left tap at
+   13:45:28.288 was followed by Consumer 0x08 at :28.389; right tap at
+   13:45:40.205 was followed by Consumer 0x08 at :40.355. Another right pair
+   appeared at 13:45:43.614/:43.664.
+3. The service was restored (active; enabled configuration unchanged). User
+   confirmed the media tap failed again. No headset command or application
+   routing change was introduced to manufacture recovery.
+
+This establishes an interaction with continuous capture through this host's
+Voxtype/EasyEffects path. The internal firmware mechanism and universality across
+other capture paths remain unknown. call_context=false does not guarantee native
+media-key delivery. The daemon's historical "outside call -> media play/pause"
+log wording denotes a gesture classification, not proof of Consumer delivery.
+Do not inject synthetic Play/Pause from vendor taps: genuine Consumer events may
+also arrive, creating duplicate toggles. Changing Voxtype's persistent capture
+policy requires separate user authorization outside the Cetra plugin.
 
 ## Remaining investigation plan
 

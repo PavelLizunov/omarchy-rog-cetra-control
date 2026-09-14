@@ -11,9 +11,11 @@
 
 static ssize_t test_send(int, const void *, size_t, int);
 static int test_close(int);
+static ssize_t test_write(int, const void *, size_t);
 #define main daemon_main_not_called
 #define send test_send
 #define close test_close
+#define write test_write
 #define open private_open
 #define openat private_openat
 #define mkostemp private_mkostemp
@@ -22,6 +24,7 @@ static int test_close(int);
 #undef main
 #undef send
 #undef close
+#undef write
 #undef open
 #undef openat
 #undef mkostemp
@@ -31,6 +34,19 @@ static int test_close(int);
 static int script[16], calls, closed;
 static size_t sent;
 static const char *message;
+static bool capture_stdout, block_stdout;
+static char captured[4096];
+static size_t captured_size;
+static ssize_t test_write(int fd, const void *data, size_t size) {
+  if (!capture_stdout) return write(fd, data, size);
+  assert(fd == STDOUT_FILENO);
+  if (block_stdout) { errno = EAGAIN; return -1; }
+  size_t count = size > 7 ? 7 : size;
+  assert(captured_size + count < sizeof(captured));
+  memcpy(captured + captured_size, data, count);
+  captured_size += count;
+  return (ssize_t)count;
+}
 static ssize_t test_send(int fd, const void *data, size_t size, int flags) {
   assert(fd == 999 && flags == (MSG_DONTWAIT | MSG_NOSIGNAL) && calls < 16);
   assert(size == strlen(message) - sent && !memcmp(data, message + sent, size));
@@ -139,6 +155,23 @@ int main(void) {
   script[0] = 1; script[1] = -EAGAIN;
   emit_state(&state, clients, last, sizeof(last));
   assert(closed == 1 && clients[0].fd == -1 && !clients[0].call_requested);
+  capture_stdout = block_stdout = true;
+  last[0] = '\0';
+  state.mode = 0; emit_state(&state, clients, last, sizeof(last));
+  assert(stdout_frame[0] && !stdout_offset);
+  state.mode = 1; emit_state(&state, clients, last, sizeof(last));
+  state.mode = 2; emit_state(&state, clients, last, sizeof(last));
+  assert(strstr(stdout_latest, "\"mode\":\"ambient\""));
+  block_stdout = false;
+  for (int i = 0; i < 100 && stdout_frame[0]; i++) flush_status_output();
+  assert(!stdout_frame[0] && !stdout_latest[0] && !stdout_offset);
+  captured[captured_size] = 0;
+  assert(strstr(captured, "\"mode\":\"off\""));
+  assert(strstr(captured, "\"mode\":\"ambient\""));
+  assert(!strstr(captured, "\"mode\":\"anc\""));
+  int frames = 0; for (size_t i = 0; i < captured_size; i++) if (captured[i] == '\n') frames++;
+  assert(frames == 2 && keep_running);
+  capture_stdout = false;
   assert(!hid_inits);
   printf("IPC safety: %d split-frame cases, 8 send cases, client disconnect passed\n", checked);
   return 0;

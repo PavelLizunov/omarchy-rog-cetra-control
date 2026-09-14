@@ -128,6 +128,17 @@ function fixture() {
 }
 
 const cases = {
+  'battery and mode freshness veto historical values and invalid domains': () => {
+    const {ctx,ready}=fixture(); ready(false);
+    const data={status:'ok',receiver:true,connected:true,left:50,right:60,case:70,mode:'anc',battery_fresh:true,mode_fresh:true};
+    ctx.applyDeviceState(JSON.stringify(data)); assert.equal(ctx.leftLevel,50); assert.equal(ctx.listeningMode,'anc');
+    ctx.applyDeviceState(JSON.stringify({...data,battery_fresh:false,mode_fresh:false}));
+    assert.equal(ctx.connected,false); assert.equal(ctx.leftLevel,null); assert.equal(ctx.listeningMode,'unknown');
+    for(const value of [-1,101,0.5,'50',null]) {
+      ctx.applyDeviceState(JSON.stringify({...data,left:value})); assert.equal(ctx.leftLevel,null);
+    }
+    ctx.applyDeviceState(JSON.stringify({...data,left:0})); assert.equal(ctx.leftLevel,0);
+  },
   'ANC readback at eight seconds confirms and a late matching reply clears timeout': () => {
     const { ctx, ready, tick, writes } = fixture();
     ready();
@@ -164,22 +175,25 @@ const cases = {
     ctx.applySavedConfig(config({ ...initial, locale: 'ru' }));
     assert.deepEqual(Object.keys(ctx.pendingPreferences), []);
     assert.equal(ctx.preferenceReadback.running, false);
-    for (const invalid of ['{', 'null', '[]', '{"version":2}', config({ id: 'foreign', locale: 'de' })])
+    for (const invalid of ['{', 'null', '[]', '{"version":2}', '{"version":1}', '{"version":1,"bar":{"layout":{"right":false}}}'])
       ctx.applySavedConfig(invalid);
     assert.equal(b.preference('locale', 'system'), 'ru');
+    ctx.applySavedConfig(config({ id: 'foreign', locale: 'de' }));
+    assert.equal(b.preference('locale', 'system'), 'system', 'Valid removal clears stale preferences');
     ctx.applySavedConfig(config({ ...initial, locale: 'de' }));
     assert.equal(a.preference('locale', 'system'), 'de');
     a.setLocaleSetting('fr');
     assert.equal(ctx.preferenceReadback.running, true);
     let reloaded = false;
-    ctx.savedConfig = { reload() { reloaded = true; ctx.applySavedConfig(config(initial)); } };
+    ctx.queueSettingsRead = () => { reloaded = true; ctx.applySavedConfig(config(initial)); };
     invoke('preferenceReadback', 'onTriggered');
     assert.equal(reloaded, true);
     assert.equal(b.preference('locale', 'system'), 'en');
     assert.deepEqual(Object.keys(ctx.pendingPreferences), []);
     assert.doesNotMatch(widgetSource, /onSettingsChanged|service\.syncSettings/);
-    assert.match(source, /onFileChanged: reload\(\)/);
-    assert.match(source, /onLoaded: root\.applySavedConfig\(text\(\)\)/);
+    assert.match(source, /onFileChanged: root.queueSettingsRead\(\)/);
+    assert.match(source, /preload: false/);
+    assert.match(source, /root.hostReady && generation === root.settingsReadGeneration && exitCode === 0/);
   },
   'manual ANC highlights require both a known level and confirmed adaptive off': () => {
     const { ctx, ready, widget } = fixture();
@@ -394,7 +408,7 @@ const cases = {
     assert.deepEqual(manifest.entryPoints, { barWidget: 'Cetra.qml', service: 'CetraService.qml' });
     assert.match(widgetSource, new RegExp(`moduleName: "${manifest.id.replaceAll('.', '\\.')}"`));
     assert.match(source, /^Item \{/m);
-    assert.doesNotMatch(source, /\bbar\b\s*:|Component\.onCompleted/);
+    assert.doesNotMatch(source, /\bbar\b\s*:/);
     assert.match(source, /readonly property color themeColor: Color\.accent/);
     assert.doesNotMatch(widgetSource, /\b(?:Process|Timer)\s*\{|Quickshell\.Io|deviceWatchProc|callContextProc|onAlwaysCallContextChanged|service\.\w+\s*=(?!=)/);
     assert.equal((source.match(/^  Process \{/gm) || []).length, 2);
@@ -407,10 +421,8 @@ const cases = {
     const assertStopped = () => {
       assert.equal(ctx.hostReady, false);
       syncWatcherBinding();
-      for (const id of ['deviceWatchProc', 'callContextPoll'])
+      for (const id of ['deviceWatchProc'])
         assert.equal(vm.runInContext(block(id).match(/^    running: (.+)$/m)[1], ctx), false);
-      invoke('callContextPoll', 'onTriggered');
-      assert.equal(ctx.callContextProc.running, false);
       invoke('deviceWatchRestart', 'onTriggered');
       assert.equal(ctx.deviceWatchProc.running, false);
       ctx.updateCallContext(true);
@@ -428,9 +440,7 @@ const cases = {
     invoke('deviceWatchRestart', 'onTriggered');
     invoke('deviceWatchProc', 'onStarted');
     assert.deepEqual(writes, ['call on\n']);
-    invoke('callContextPoll', 'onTriggered');
-    assert.equal(ctx.callContextProc.running, true);
-    assert.equal(ctx.callContextTimeout.running, true);
+    assert.match(source, /AudioTopology \{ id: audioTopology; active: root.hostReady && root.receiver \}/);
   },
   'FailedToStart without exited retries on each timer expiry and recovers': () => {
     const { ctx, writes, ready, invoke, watcherRunningChanged } = fixture();
@@ -655,17 +665,11 @@ const cases = {
     assert.equal(view.reportText(null, false, true), 'Not charging');
     assert.match(widgetSource, /text: root\.tr\("battery\.lastReported", "Battery values are last reported\."\)/);
     assert.equal((widgetSource.match(/root\.tr\("battery\.lastReported"/g) || []).length, 1);
-    assert.match(widgetSource, /visible: text !== ""\s+text: root\.batteryStatusText\(modelData.present, modelData.charging, modelData.isCase\)/);
+    assert.match(widgetSource, /visible: text !== ""\s+text: modelData.present === true && modelData.value === null\s*\? root.tr\("battery.presentNoLevel"/);
+    assert.match(widgetSource, /: root\.batteryStatusText\(modelData.present, modelData.charging, modelData.isCase\)/);
   },
-  'destruction requests ALRM only for a running detector, not a cleanup guarantee': () => {
-    const { ctx, signals } = fixture();
-    const body = source.match(/^  Component.onDestruction: \{\n([\s\S]*?)^  \}/m)[1];
-    vm.runInContext(body, ctx);
-    assert.deepEqual(signals, []);
-    ctx.callContextProc.running = true;
-    ctx.callContextProc.processId = 123;
-    vm.runInContext(body, ctx);
-    assert.deepEqual(signals, [14]);
+  'event detector owns no subprocess needing descendant cleanup': () => {
+    assert.doesNotMatch(require('../qml-source.js').read('CallDetector.qml'), /Process|\.signal\(/);
   },
 };
 

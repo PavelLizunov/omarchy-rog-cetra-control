@@ -6,9 +6,11 @@ interface 3). Bluetooth and other Cetra models are not supported.
 
 ![ROG Cetra Control panel](preview.png)
 
-The manifest is a **1.6.0 candidate**. Release acceptance remains open in
-[BACKLOG.md](BACKLOG.md) and [RELEASE.md](RELEASE.md). The preview shows the same
-controls before the internal module split; no telemetry is fabricated.
+Version **1.7.0 is prepared for release with documented limitations**; publication
+is pending. The previous [1.6.0 pre-release](https://github.com/PavelLizunov/omarchy-rog-cetra-control/releases/tag/v1.6.0)
+does not include these changes. See [RELEASE.md](RELEASE.md) for candidate status
+and [BACKLOG.md](BACKLOG.md) for accepted limits and untested scenarios. The preview
+predates the optional microphone meter and is not a screenshot of every 1.7.0 control.
 
 ## Install
 
@@ -17,9 +19,10 @@ shell. This plugin uses a native receiver helper and persistent local diagnostic
 Review [Security and privacy](#security-and-privacy) before installing.
 
 Runtime dependencies: Omarchy Quattro/Quickshell, `hidapi` (hidraw backend),
-`bash`, `pactl`, `jq` and GNU `timeout`. A PulseAudio-compatible audio server is
-needed for capture detection. Building needs a C compiler and `pkg-config`.
-The manual setup script can install `base-devel`, `hidapi` and `pkgconf`; it
+`libpulse` and Quickshell's PipeWire service. A PulseAudio-compatible audio server
+is needed for peak capture. Setup additionally uses `bash`, `jq` and GNU `timeout`.
+Building needs a C compiler and `pkg-config`.
+The manual setup script can install `base-devel`, `hidapi`, `libpulse` and `pkgconf`; it
 does not install every runtime or test dependency.
 
 ```bash
@@ -29,19 +32,23 @@ omarchy plugin enable io.github.pavellizunov.rog-cetra-control --section right
 ```
 
 The Marketplace clones source; it does not execute setup automatically. Setup
-compiles both helpers, runs their offline selftests and validates the folder.
-It refuses binary replacement while Omarchy reports the screen locked.
+compiles all three helpers, runs their offline selftests and validates the folder.
+It requires an explicitly unlocked Omarchy session; locked, unavailable or
+malformed lock-status responses prevent binary replacement.
 
 ## Use
 
 Click the bar icon to open the panel. Right-click or use the wheel to cycle noise
-modes. The vertical bar is icon-only; the horizontal bar can show the lowest
+modes. The vertical bar omits battery text; the horizontal bar can show the lowest
 reported earbud percentage.
 
 - **Noise control:** Off, ANC and Ambient. In ANC, select Low/Mid/High or Adaptive.
   A manual level requests Adaptive Off when its current state is On or Unknown.
 - **Battery:** percentages are last-reported values. Missing data is not proof of
   case placement. Detailed availability/charging observations are in the tooltip.
+  A present earbud with missing battery reports stays visibly available with
+  "Available; battery unknown". Its percentage is not copied from the other earbud
+  or replaced with an old log value.
 - **Voice prompts:** English, Chinese or Beeps; these are headset settings,
   separate from the interface language.
 - **Keyboard:** Tab/Shift+Tab traverse controls, arrows move focus, Enter/Space
@@ -83,10 +90,43 @@ verification; the implemented sequence is recorded in RESEARCH.md.
 prompt. The plugin does not decode it, record PCM, infer mute from tap parity or
 offer synthetic software mute as a native hardware control.
 
-Capture metadata drives automatic call-context requests. Two inactive polls or
-three nonpositive results clear detection; the subprocess group is bounded by
-GNU timeout. Application-name matching can mistake browser recording for a call.
+### Optional microphone signal meter
+
+Enable **Show microphone level** in Device settings to add a compact meter beside
+the bar icon. It measures the physical Cetra input, not the default mic or audio
+after application processing. Movement means signal is present; zero is not proof
+of native mute. Missing capture data is shown separately as dim marks.
+
+The feature defaults Off and uses `bin/cetra-peak`, built by setup with `libpulse`.
+One service-owned monitor is loaded only while enabled and earbuds are available.
+Peak capture starts only when an external endpoint has a verified active audio
+path from Cetra. Processing clients, monitors and keepalives alone do not count.
+Its own link cannot keep it alive or count as a call. Ordinary recording can show
+a level without requesting call context. Mixed or incomplete routes fail closed.
+The helper pins its own stream to Cetra using Pulse and WirePlumber properties;
+no EasyEffects exclusion or application-route change is required on the tested
+PipeWire 1.6.8/WirePlumber host. Source mismatch stops capture; unavailable sources
+or helper failures show no data and retry every two seconds while input is in use.
+
+The audio server computes peaks; the helper receives only 20 mono peaks/second.
+No audio or level samples are saved or sent over the network. This creates an additional PipeWire capture stream,
+removed when external use ends, the option is disabled or the service unloads.
+The helper publishes at most 20 updates/second. The cube-root visual scale is not dB SPL,
+speech recognition, application audibility or hardware mute readback.
+
+PipeWire topology events drive automatic call-context requests. Lost or unknown
+capture is confirmed by a bounded two-second settlement timer. Explicit phone /
+communication roles take precedence; untagged known communication applications
+use a name fallback. An untagged generic browser capture does not prove a call.
 The JSON `call_context` value is a requested context, not confirmed tap assignment.
+
+**Continuous background microphone capture can prevent native Play/Pause taps.**
+A controlled trial on this host reproduced the failure with a Voxtype keepalive
+capturing through EasyEffects, recovery when capture stopped, and recurrence
+when it resumed. The Cetra meter was absent and `call_context` was false. Vendor
+tap reports alone do not prove that a media key was delivered. The plugin does
+not change other applications or synthesize Play/Pause from those reports.
+See the dated evidence in [RESEARCH.md](RESEARCH.md).
 
 The manual Request call mode control and M/Ь shortcut were removed because their
 benefit outside a real call was unverified. Legacy `alwaysCallContext` is ignored.
@@ -112,7 +152,11 @@ An explicit script takes precedence over region. See [locales/README.md](locales
 
 UI preferences live in the plugin's inline entry in `~/.config/omarchy/shell.json`.
 Writes use the scoped Omarchy API. `CetraPreferences.qml` reads the saved entry
-through FileView because host snapshots and widget injections can be stale.
+through the bounded `cetra-status --read-settings` helper because host snapshots
+and widget injections can be stale. FileView only watches changes (`preload: false`)
+and does not read the document. Reads are coalesced for 100 ms, limited to one
+process, capped at 1 MiB before output, and bounded to three seconds. Missing,
+non-regular, oversized or detected concurrently modified files are rejected.
 Accepted writes override older completions until readback or a three-second
 reload; malformed reads preserve last valid state.
 
@@ -150,23 +194,29 @@ below if you want to delete diagnostics.
 - The helper sends the documented read queries and explicit control reports.
   Call requests and valid session lighting replay can occur automatically; see
   [HANDBOOK.md](HANDBOOK.md) for cadence and [RESEARCH.md](RESEARCH.md) for opcodes.
-- Settings and presence/charging expire after 30 seconds. Battery/mode lack a
-  general read-response watchdog and may remain historical.
-- Runtime socket/lock/cache use `$XDG_RUNTIME_DIR`. The fallback uses fixed names
-  under `/tmp` and remains unsafe for multi-user use. Cache replacement uses a
-  private unique temporary file and rename; that does not secure the whole path.
+- Settings and presence/charging expire after 30 seconds. Battery/mode freshness
+  flags also expire after 30 seconds; the UI hides stale values. Raw daemon battery
+  and mode fields remain last-reported values for diagnostic compatibility.
+- Runtime socket/lock/cache require an owner-private `$XDG_RUNTIME_DIR`. Missing,
+  relative or shared roots are rejected; there is no shared `/tmp` fallback.
+  Cache replacement uses a private unique temporary file and rename.
 - IPC validates command domains and framing. Owner sends handle partial writes,
-  disconnecting clients on backpressure. Mirror/stdout backpressure remains open.
-- Capture detection reads `pactl` metadata, not audio samples. Hardware serial
-  numbers are not collected. No system microphone mute or audio routing is changed.
+  disconnecting clients on backpressure. Owner stdout retains at most a partial
+  frame and the latest pending state; mirror queues are bounded to 4 KiB per direction.
+- Call detection reads PipeWire metadata, not audio samples. The optional meter
+  creates a peak-capture stream as described above. Device serial numbers are not
+  persisted. No system microphone mute or existing audio routing is changed.
 - Owner-only telemetry logs commands/RGB, gestures, battery/settings, lifecycle,
   timestamps and raw unhandled HID bytes. This can reveal usage timing.
 - Log path: `${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/rog-cetra-control.log`.
   If unsafe/unavailable, a verified private runtime directory is tried. Files are
-  no-follow, owner/type/single-link checked and mode 0600. Checks do not validate
-  every ancestor. Old untouched backups are not retroactively repaired.
-- Above 5 MiB the log rotates to one `.old` backup. Logging is synchronous and
-  has no runtime opt-out. Shared-shell teardown remains best effort for hung
+  no-follow, owner/type/single-link checked and mode 0600. Ancestors are checked
+  for links, ownership and writable paths; this is not a descriptor-relative
+  guarantee against concurrent same-user directory replacement.
+- Above 5 MiB the log rotates to one `.old` backup. Set `CETRA_DIAGNOSTICS=0` in
+  the environment inherited by the shell before starting it to disable new
+  diagnostic writes (existing files remain). Logging/cache I/O is synchronous;
+  a stalled filesystem can still delay the owner. Shared-shell teardown remains best effort for hung
   descendants; one passing normal exit does not cover every reload race.
 
 ## Development and verification

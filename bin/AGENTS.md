@@ -4,11 +4,12 @@
 
 `bin/` contains the local executable binaries built by `./setup` on the target system:
 - `cetra-watch`: Long-lived receiver owner and UNIX socket server.
-- `cetra-status`: Standalone diagnostic/testing tool for fixture playback.
+- `cetra-status`: Bounded settings reader and offline fixture diagnostic tool; no HID.
+- `cetra-peak`: Optional audio-only libpulse peak client; never accesses HID.
 
 ## Git Rules
 
-- Generated binaries under `bin/` (`bin/cetra-status` and `bin/cetra-watch`) are **strictly untracked** (enforced by `.gitignore`).
+- Generated binaries under `bin/` are **strictly untracked** (enforced by `.gitignore`).
 - Never commit binary executables to Git.
 - Binary helpers are built from source on the user's machine during `./setup`.
 - `cetra-watch.c` includes private implementation modules from `daemon/`; retain

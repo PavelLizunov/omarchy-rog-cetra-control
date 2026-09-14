@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell
 import Quickshell.Io
 import qs.Commons
 
@@ -7,10 +6,17 @@ CetraPreferences {
   id: root
   readonly property var serviceHost: root
 
-  readonly property string watchCommand: Qt.resolvedUrl("bin/cetra-watch").toString().replace("file://", "")
-  property alias callContextProc: detector.process
-  property alias callContextTimeout: detector.timeout
-  CallDetector { id: detector; root: serviceHost }
+  readonly property string watchCommand: decodeURIComponent(Qt.resolvedUrl("bin/cetra-watch").toString().replace("file://", ""))
+  AudioTopology { id: audioTopology; active: root.hostReady && root.receiver }
+  CallDetector { id: detector; root: serviceHost; observation: audioTopology.observation.communication }
+  readonly property var microphoneLevel: microphoneMeter.item ? (microphoneMeter.item as MicrophoneMeter).level : null
+  Loader {
+    id: microphoneMeter
+    active: root.hostReady && root.connected && root.settings.showMicLevel === true
+    sourceComponent: Component {
+      MicrophoneMeter { topology: audioTopology }
+    }
+  }
   readonly property color themeColor: Color.accent
   property string sessionLightingEffect: ""
   property string lastLightingPayload: ""
@@ -87,8 +93,6 @@ CetraPreferences {
   function resetCallDetection() {
     detectedCallContext = false
     inactiveCallPolls = unknownCallPolls = nonpositiveCallPolls = 0
-    callContextProc.pending = false
-    callContextTimeout.stop()
   }
 
   function clearDeviceState() {
@@ -146,7 +150,7 @@ CetraPreferences {
     presenceObserved = data.presence_raw !== undefined && data.presence_raw !== null
     // Once presence has been observed, stale battery percentages cannot restore controls.
     connected = receiver && (leftPresent === true || rightPresent === true
-      || (!presenceObserved && leftPresent === null && rightPresent === null && data.connected === true))
+      || (!presenceObserved && leftPresent === null && rightPresent === null && data.connected === true && data.battery_fresh !== false))
     if (!connected) {
       pendingMode = ""
       modeRequestTimeout.stop()
@@ -155,10 +159,10 @@ CetraPreferences {
       settingsRequestTimedOut = false
       settingsRequestTimeout.stop()
     }
-    leftLevel = data.left === undefined ? null : data.left
-    rightLevel = data.right === undefined ? null : data.right
-    caseLevel = data.case === undefined ? null : data.case
-    listeningMode = String(data.mode || "unknown")
+    leftLevel = data.battery_fresh === false ? null : validBattery(data.left)
+    rightLevel = data.battery_fresh === false ? null : validBattery(data.right)
+    caseLevel = data.battery_fresh === false ? null : validBattery(data.case)
+    listeningMode = data.mode_fresh !== false && ["off", "anc", "ambient"].indexOf(data.mode) >= 0 ? data.mode : "unknown"
     ancLevel = connected && [1, 2, 3].indexOf(data.anc_level) >= 0 ? data.anc_level : null
     ancAdaptive = connected && typeof data.anc_adaptive === "boolean" ? data.anc_adaptive : null
     voicePrompt = connected && ["english", "chinese", "sound"].indexOf(data.voice_prompt) >= 0 ? data.voice_prompt : "unknown"
@@ -189,11 +193,11 @@ CetraPreferences {
   }
 
   function applyDeviceState(text) {
-    try {
-      var data = JSON.parse(String(text || "").trim())
-      if (data && typeof data === "object" && typeof data.status === "string")
-        applyStatus(text)
-    } catch (error) {}
+    applyStatus(text)
+  }
+
+  function validBattery(value) {
+    return typeof value === "number" && isFinite(value) && Math.floor(value) === value && value >= 0 && value <= 100 ? value : null
   }
 
   function setListeningMode(mode) {
@@ -323,15 +327,6 @@ CetraPreferences {
     }
     detectedCallContext = result === "active"
     updateCallContext()
-  }
-
-  function finishCallContext(text) {
-    // Exit, launch failure and watchdog can race; consume each poll once.
-    if (!callContextProc.pending)
-      return
-    callContextProc.pending = false
-    callContextTimeout.stop()
-    applyCallContext(text)
   }
 
   function watcherStopped() {

@@ -9,6 +9,10 @@ export TMPDIR="$build_dir"
 
 python3 -m json.tool "$plugin_dir/manifest.json" >/dev/null
 node "$plugin_dir/tests/module-contract.js"
+node "$plugin_dir/tests/microphone-meter.js"
+node "$plugin_dir/tests/audio-topology.js"
+node "$plugin_dir/tests/contrast.js"
+python3 -B "$plugin_dir/tests/qml-lint.py"
 test -z "$(find "$plugin_dir" -type l)"
 
 omarchy plugin validate "$plugin_dir"
@@ -23,7 +27,15 @@ cc -O2 -Wall -Wextra -Werror \
   $(pkg-config --cflags --libs hidapi-hidraw)
 
 test "$("$build_dir/cetra-status" --selftest)" = "ok"
+python3 -B "$plugin_dir/tests/settings-input.py" "$build_dir/cetra-status"
 test "$("$build_dir/cetra-watch" --selftest)" = "ok"
+python3 -B "$plugin_dir/tests/runtime-path.py" "$build_dir/cetra-watch"
+python3 -B "$plugin_dir/tests/mirror-transport.py" "$build_dir/cetra-watch"
+cc -O2 -Wall -Wextra -Werror -o "$build_dir/cetra-peak" "$plugin_dir/cetra-peak.c" $(pkg-config --cflags --libs libpulse) -lm
+test "$("$build_dir/cetra-peak" --selftest)" = "ok"
+python3 -B "$plugin_dir/tests/peak-client.py" "$build_dir/cetra-peak"
+python3 -B "$plugin_dir/tests/setup-guard.py"
+python3 -B "$plugin_dir/tests/setup-install.py"
 python3 -B "$plugin_dir/tests/microphone-state/run.py"
 python3 -B "$plugin_dir/tests/device-reports/run.py"
 python3 -B "$plugin_dir/tests/device-reports/owner-ttl.py"
@@ -53,14 +65,8 @@ node "$plugin_dir/tests/lighting-color/run.js"
 node "$plugin_dir/tests/i18n/run.js"
 node "$plugin_dir/tests/service-lifecycle/run.js"
 
-call_filter='any(.[]; . as $s | (.properties // {}) as $p | (["application.name", "application.process.binary", "application.id", "application.icon_name", "pipewire.access.portal.app_id", "node.name", "media.name", "media.filename"] | map(($p[.] // "") | tostring) | join(" ")) as $id | ($s.corked != true) and (($id | test("easy[ _-]?effects|pw-(record|cat)|voxtype|recognition|keepalive|/dev/null"; "i") | not) and (($id | test("(^|[^[:alnum:]_])(webrtc|chrom(e|ium)( input)?|firefox|discord|vesktop|steam(webhelper)?|telegram|zoom|brave|vivaldi|microsoft-edge)([^[:alnum:]_]|$)"; "i")) or (($p["media.role"] // "") | test("^(phone|communication)$"; "i")))))'
-chromium_fixture='[{"corked":false,"properties":{"application.name":"Chromium input","application.process.binary":"chromium","media.name":"RecordStream"}}]'
-keepalive_fixture='[{"corked":false,"properties":{"application.name":"pw-record","node.name":"pw-record","media.filename":"/dev/null","target.object":"easyeffects_source"}}]'
-test "$(jq -nr --argjson streams "$chromium_fixture" '$streams | '"$call_filter")" = "true"
-test "$(jq -nr --argjson streams "$keepalive_fixture" '$streams | '"$call_filter")" = "false"
-
 # Run only the guard function, never the setup/deployment entry point.
-if locked_output="$(bash -c 'function omarchy-shell { printf '\''%s\n'\'' '\''{"locked":true,"requested":true,"secure":true}'\''; }; source /dev/stdin; ensure_shell_unlocked' < <(sed -n '/^ensure_shell_unlocked() {/,/^}/p' "$plugin_dir/setup") 2>&1)"; then
+if locked_output="$(bash -c 'function omarchy-shell { printf '\''%s\n'\'' '\''{"locked":true,"requested":true,"secure":true}'\''; }; function timeout { shift; "$@"; }; source /dev/stdin; ensure_shell_unlocked' < <(sed -n '/^ensure_shell_unlocked() {/,/^}/p' "$plugin_dir/setup") 2>&1)"; then
   printf '%s\n' "Setup accepted an active Omarchy lockscreen" >&2
   exit 1
 fi

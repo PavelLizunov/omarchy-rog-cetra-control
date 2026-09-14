@@ -37,7 +37,7 @@ All checks must exit with code 0 before any change is declared complete or commi
    - Prohibits unreliable mute-state inferences.
 
 4. **Call Detection Filter Test:**
-   - Verifies the `jq` PipeWire stream filter correctly flags communication capture streams (Chromium WebRTC, Discord, etc.) while ignoring keepalives, `pw-record`, EasyEffects, and Voxtype.
+   - Executes production topology and settlement functions. Verifies real Cetra paths, communication roles, foreign/mixed inputs and monitor/keepalive exclusion. The old shell pipeline and its process-tree test were removed together.
 
 5. **Design System Color Guard:**
    - Scans all `*.qml` and `*.svg` files for hardcoded `#hex` color codes (except `#fff` in SVGs).
