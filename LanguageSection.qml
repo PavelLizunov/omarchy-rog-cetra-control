@@ -36,10 +36,26 @@ Column {
         onClicked: {
           // Retranslation rebuilds the Repeater; close before saving.
           var code = modelData.code
-          root.languageExpanded = false
-          root.setLocaleSetting(code)
+          var owner = section.root
+          owner.languageExpanded = false
+          owner.languageSaveFailed = !owner.setLocaleSetting(code)
+          if (owner.languageSaveFailed) {
+            owner.languageExpanded = true
+            owner.languageSaveFailed = true
+          }
         }
       }
     }
+  }
+  Text {
+    textFormat: Text.PlainText
+    id: languageError
+    width: parent.width
+    visible: root.languageSaveFailed
+    text: root.tr("language.saveFailed", "Could not save the language. Try again.")
+    color: root.dim
+    font.family: root.fontFamily
+    font.pixelSize: Style.font.caption
+    wrapMode: Text.Wrap
   }
 }

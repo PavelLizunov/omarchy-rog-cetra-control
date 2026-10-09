@@ -159,5 +159,8 @@
   "lighting.exactColorExpand": "精确颜色  +",
   "lighting.exactColorCollapse": "精确颜色  −",
   "lighting.channelValue": "{channel}: {value}",
-  "lighting.selectedColor": "所选颜色"
+  "lighting.selectedColor": "所选颜色",
+  "lighting.savedNotSent": "颜色已保存，但未发送。请检查连接后重新应用。",
+  "lighting.closeColor": "关闭",
+  "language.saveFailed": "无法保存语言。请重试。"
 }

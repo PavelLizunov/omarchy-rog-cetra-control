@@ -159,5 +159,8 @@
   "lighting.exactColorExpand": "Exakte Farbe  +",
   "lighting.exactColorCollapse": "Exakte Farbe  −",
   "lighting.channelValue": "{channel}: {value}",
-  "lighting.selectedColor": "Ausgewählte Farbe"
+  "lighting.selectedColor": "Ausgewählte Farbe",
+  "lighting.savedNotSent": "Farbe gespeichert, aber nicht gesendet. Verbindung prüfen und erneut anwenden.",
+  "lighting.closeColor": "Schließen",
+  "language.saveFailed": "Sprache konnte nicht gespeichert werden. Bitte erneut versuchen."
 }

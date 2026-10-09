@@ -159,5 +159,8 @@
   "lighting.exactColorExpand": "正確な色  +",
   "lighting.exactColorCollapse": "正確な色  −",
   "lighting.channelValue": "{channel}: {value}",
-  "lighting.selectedColor": "選択した色"
+  "lighting.selectedColor": "選択した色",
+  "lighting.savedNotSent": "色は保存されましたが、送信されませんでした。接続を確認して、もう一度適用してください。",
+  "lighting.closeColor": "閉じる",
+  "language.saveFailed": "言語を保存できませんでした。もう一度お試しください。"
 }

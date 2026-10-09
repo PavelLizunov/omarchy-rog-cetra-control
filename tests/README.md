@@ -6,6 +6,7 @@ outside the active plugin; generated helpers in bin/ are not test artifacts.
 
 | Suite | What it exercises |
 | --- | --- |
+| documentation.py | Active instruction ownership, local documentation links/anchors, concise README and aggregate panel-test inclusion |
 | microphone-state | Unknown mute, gesture lengths/counter, obsolete commands |
 | microphone-meter.js | Exact source, active-link/self-monitor gate, null/zero, call exclusion, presence without battery, initial admission/cooldown and Sound signal labels |
 | microphone-meter/run.py | Production meter in isolated Qt with fake Process: immediate start, real two-second timer, rapid capture toggles, source replacement, zero, freshness expiry and stop; no recording |
@@ -27,6 +28,7 @@ outside the active plugin; generated helpers in bin/ are not test artifacts.
 | lighting-color | RGB/settings, auto-theme, actual Qt colors and label geometry |
 | i18n | Catalogs/placeholders, fallback, stale callbacks, plain text |
 | service-lifecycle | Shared requests, 48-tick expiry, late replies, retry, Sound/Device keyboard focus and hotplug |
+| panel-ui/run.py | Full production panel in isolated Qt/OpenGL: mouse/key navigation, scoped errors, save failures, Escape/focus, locale fallback and disabled Apply |
 
 ## Modular source snapshots
 
@@ -49,6 +51,28 @@ Record source hash, command, exit and scope. Offline green does not prove render
 focus, every locale, device tolerance or release readiness. After moving code,
 keep transcript/JSON assertions and check actual panel delivery; stale QML after
 hot reload was observed on the tested host. See ../MODULES.md for owners.
+
+The aggregate always runs the panel regression. It requires Qt Quick Test
+(`qmltestrunner`), Mesa software OpenGL and Xvfb (`xorg-server-xvfb`). The runner
+owns a private virtual display, disables TCP listening, selects Mesa GLX/EGL,
+and stops/reaps Xvfb after success, failure or timeout. It never connects to the
+production display. `CETRA_TEST_XVFB` may name a verified local Xvfb executable.
+Qt's offscreen platform still needs GLX here; a missing display previously caused
+SIGABRT. Software OpenGL is real OpenGL, not the Qt software scene-graph fallback;
+the fixture asserts `GraphicsInfo.OpenGL`. To run it alone, use
+`python3 -B tests/panel-ui/run.py`.
+Set `CETRA_PANEL_EVIDENCE_DIR` to retain the fixture and PNGs for inspection.
+It copies the production panel, view model, sections and installed host controls;
+only test object names are added to view files. Services, window ownership and
+theme/catalog I/O use inert adapters. It writes no desktop settings and opens
+no hardware. Captures use the host's default theme. This does not verify live
+Wayland focus, outside-click dismissal, screen placement or device delivery.
+The window adapter imports the installed host's fitting and card-origin formulas
+with simulated screen/bar inputs. Transition assertions compare requested and
+fitted card dimensions, origin, navigation and viewport bounds with a one-unit
+tolerance. They cover all captured states, constrained 320 × 420 screens, enlarged
+text and fixed wheel dimensions. This is host-formula/fixture evidence, not live
+compositor placement evidence.
 
 QML lint policy: unqualified access to explicit lexical section properties is
 style advice (`info`). Host Style/Bar QtObject members are accepted only when

@@ -8,6 +8,7 @@ trap 'rm -rf "$build_dir"' EXIT
 export TMPDIR="$build_dir"
 
 python3 -m json.tool "$plugin_dir/manifest.json" >/dev/null
+python3 -B "$plugin_dir/tests/documentation.py"
 node "$plugin_dir/tests/module-contract.js"
 node "$plugin_dir/tests/microphone-meter.js"
 python3 -B "$plugin_dir/tests/microphone-meter/run.py"
@@ -56,7 +57,7 @@ if grep -Eq '0x33|05 33|mic (live|muted)' "$plugin_dir/cetra-watch.c" "$plugin_d
   printf '%s\n' "Unsupported software microphone state command found" >&2
   exit 1
 fi
-if grep -Eq 'mic_muted|0xcc, 0x70|proven hardware toggle' "$plugin_dir/cetra-watch.c" "$plugin_dir"/daemon/*.h "$plugin_dir/Cetra.qml" "$plugin_dir/CetraService.qml" "$plugin_dir/README.md"; then
+if grep -Eq 'mic_muted|0xcc, 0x70|proven hardware toggle' "$plugin_dir/cetra-watch.c" "$plugin_dir"/daemon/*.h "$plugin_dir/Cetra.qml" "$plugin_dir/CetraService.qml" "$plugin_dir/README.md" "$plugin_dir/docs/user-guide.md"; then
   printf '%s\n' "Unreliable microphone state inference found" >&2
   exit 1
 fi
@@ -71,6 +72,7 @@ python3 -B "$plugin_dir/tests/call-context/run.py"
 node "$plugin_dir/tests/lighting-color/run.js"
 node "$plugin_dir/tests/i18n/run.js"
 node "$plugin_dir/tests/service-lifecycle/run.js"
+python3 -B "$plugin_dir/tests/panel-ui/run.py"
 
 # Run only the guard function, never the setup/deployment entry point.
 if locked_output="$(bash -c 'function omarchy-shell { printf '\''%s\n'\'' '\''{"locked":true,"requested":true,"secure":true}'\''; }; function timeout { shift; "$@"; }; source /dev/stdin; ensure_shell_unlocked' < <(sed -n '/^ensure_shell_unlocked() {/,/^}/p' "$plugin_dir/setup") 2>&1)"; then

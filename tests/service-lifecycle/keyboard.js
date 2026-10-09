@@ -17,6 +17,7 @@ function fixture() {
     viewport: { contentItem: {}, contentY: 0, contentHeight: 1000, height: 100 },
     switchPanel: direction => switches.push(direction), close: () => { ctx.opened = false; },
   });
+  ctx.column.parent = ctx.viewport.contentItem;
   ctx.root = ctx;
   vm.runInContext(functions, ctx);
   for (const name of ['setListeningMode', 'setAncLevel', 'setAncAdaptive', 'setProximity'])
@@ -24,7 +25,7 @@ function fixture() {
   const names = ['Escape', 'Tab', 'Backtab', 'Down', 'Up', 'Right', 'Left', 'Return', 'Enter', 'Space'];
   ctx.Qt = Object.fromEntries(names.map((name, i) => [`Key_${name}`, i + 1]));
   ctx.Qt.ShiftModifier = 1;
-  ctx.closeRequested = () => ctx.close();
+  ctx.closeRequested = () => ctx.dismissPanelLayer();
   ctx.tabRequested = direction => ctx.moveFocus(direction, true);
   ctx.moveRequested = (dx, dy) => ctx.moveFocus(dx || dy, false);
   ctx.activateRequested = () => ctx.activateFocus();
@@ -38,7 +39,7 @@ function fixture() {
     return event;
   };
   function item(name, parent = ctx.column, action = true) {
-    const control = { name, visible: true, enabled: true, activeFocusOnTab: true, activeFocus: false,
+    const control = { parent, name, visible: true, enabled: true, activeFocusOnTab: true, activeFocus: false,
       height: 30, children: [], mapToItem: () => ({ y: controls.indexOf(control) * 40 }),
       forceActiveFocus() { controls.forEach(item => { item.activeFocus = false; }); this.activeFocus = true; },
     };
@@ -172,6 +173,7 @@ function fixture() {
   y = 550;
   ctx.focusControl(apply);
   assert.equal(ctx.viewport.contentY, 530, 'Already visible target does not jump');
+  ctx.Qt.callLater = fn => fn();
   ctx.lightingPaletteToggle = palette;
   ctx.lightingColorExpanded = false;
   const collapse = source.match(/onLightingColorExpandedChanged: \{([\s\S]*?)^  \}/m)[1];
@@ -212,7 +214,7 @@ const headerLanguage = read('Cetra.qml').match(/trailingControl: Component \{([\
 assert.match(headerLanguage, /focusable: true/);
 assert.match(headerLanguage, /Keys\.forwardTo: \[root\.keyTarget\]/);
 assert.match(headerLanguage, /Accessible\.onPressAction: headerLanguageButton\.clicked\(\)/);
-assert.match(read('Cetra.qml'), /LanguageSection \{ root: panelHost; width: parent.width \}\s+Row \{\s+id: pageTabs/);
+assert.match(read('Cetra.qml'), /id: navigation[\s\S]*?id: pageTabs[\s\S]*?id: viewport[\s\S]*?LanguageSection/);
 assert.equal((source.match(/\bToggleSwitch \{/g) || []).length, 1, 'All switches use the single-click-owner row');
 assert.equal((source.match(/\bSettingToggle \{/g) || []).length, 4);
 assert.doesNotMatch(source, /alwaysCallContext|setAlwaysCallContext/);
@@ -220,10 +222,11 @@ assert.doesNotMatch(source, /settings\.autoPause|setProximity|root\.proximity/);
 {
   const handler = source.match(/\/\/ Retranslation rebuilds the Repeater; close before saving\.\n([\s\S]*?)^        \}/m)[1];
   let closed = false, saved = '';
-  const ctx = vm.createContext({ modelData: { code: 'ru' }, root: {
+  const owner = {
     set languageExpanded(value) { closed = value === false; },
-    setLocaleSetting(code) { assert.equal(closed, true); saved = code; },
-  } });
+    setLocaleSetting(code) { assert.equal(closed, true); saved = code; return true; },
+  };
+  const ctx = vm.createContext({ modelData: { code: 'ru' }, section: { root: owner } });
   vm.runInContext(handler, ctx);
   assert.equal(saved, 'ru', 'Click captures the chosen code before retranslation destroys delegates');
 }
@@ -232,10 +235,10 @@ assert.match(read('SettingToggle.qml'), /FocusScope/);
 assert.match(source, /checked: toggleRow.value === true\s*interactive: false/);
 assert.match(source, /Accessible.role: Accessible.CheckBox/);
 assert.match(source, /Accessible.role: Accessible.StaticText/);
-const catcher = source.match(/PanelKeyCatcher \{[\s\S]*?\n      Flickable \{/)[0];
+const catcher = source.match(/PanelKeyCatcher \{[\s\S]*?\n      Item \{/)[0];
 assert.doesNotMatch(catcher, /Keys.onPressed|blocked:/);
 assert.match(catcher, /onTextKey: function \(t\) \{ root.handleTextKey\(t\) \}/);
-assert.match(catcher, /onCloseRequested: root.close\(\)/);
+assert.match(catcher, /onCloseRequested: root.dismissPanelLayer\(\)/);
 assert.match(source, /Keys.onTabPressed: root.moveFocus\(1, true\)/);
 assert.match(source, /Keys.onBacktabPressed: root.moveFocus\(-1, true\)/);
 console.log('PASS keyboard: 4 behavioral groups + control wiring (offline, not Qt event delivery)');

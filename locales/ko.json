@@ -159,5 +159,8 @@
   "lighting.exactColorExpand": "정확한 색상  +",
   "lighting.exactColorCollapse": "정확한 색상  −",
   "lighting.channelValue": "{channel}: {value}",
-  "lighting.selectedColor": "선택한 색상"
+  "lighting.selectedColor": "선택한 색상",
+  "lighting.savedNotSent": "색상은 저장되었지만 전송되지 않았습니다. 연결을 확인하고 다시 적용하세요.",
+  "lighting.closeColor": "닫기",
+  "language.saveFailed": "언어를 저장하지 못했습니다. 다시 시도하세요."
 }

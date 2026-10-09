@@ -325,7 +325,7 @@ test('active widget uses the English catalog with matching keys and complete sou
 test('visible bindings and models have no untranslated literals; direct Text is plain', () => {
   const lines = widget.split('\n');
   const allowed = new Set(['', 'off', 'anc', 'ambient', 'cycle', 'static', 'breathing', 'strobing',
-    'lightingRed', 'lightingGreen', 'lightingBlue', 'sent', 'cetra-left', 'cetra-right', 'cetra-case', 'english', 'chinese', 'sound']);
+    'anc_level', 'anc_adaptive', 'voice_prompt', 'saved-not-sent', 'lightingRed', 'lightingGreen', 'lightingBlue', 'sent', 'cetra-left', 'cetra-right', 'cetra-case', 'english', 'chinese', 'sound']);
   for (let i = 0; i < lines.length; i++) {
     const match = lines[i].match(/^(\s*)(?:\{ )?(?:text|title|meta|tooltipText|label|Accessible\.(?:name|description)):\s*(.*)/);
     if (!match) continue;
@@ -352,7 +352,7 @@ test('compact copy preserves unknown mute, shared battery history and conditiona
   assert.match(widget, /text: root\.microphoneHelpText\(\)/);
   assert.match(widget, /root\.tr\("microphone\.unknown", "Microphone mute: unknown"\)/);
   assert.match(widget, /visible: !root\.lightingColorExpanded && root\.lighting !== "unknown"\s+text: root\.tr\("lighting\.lastSent"/);
-  assert.match(widget, /contentWidth: panel\.fittedContentWidth\(Style\.space\(380\)\)/);
+  assert.match(widget, /contentWidth: panel\.fittedContentWidth\(preferredWidth\)/);
   const help = widget.match(/^\s*text: (root\.selectedLightingColor === null[\s\S]*?)^\s*color: root\.dim/m)[1];
   const ctx = vm.createContext({ root: {
     selectedLightingColor: {}, useThemeColor: true, tr: (key, fallback) => fallback,
@@ -385,6 +385,16 @@ test('production widget functions consume catalogs, interpolate reports and pres
     ctx.settingsStatusKey = key;
     assert.equal(ctx.settingsFeedback(), label);
   }
+  ctx.pendingSettings = { anc_level: { desired: 3 } };
+  ctx.timedOutSettings = {};
+  assert.equal(ctx.settingsFeedback(['anc_level', 'anc_adaptive']), 'Waiting for setting readback...');
+  assert.equal(ctx.settingsFeedback(['voice_prompt']), '', 'ANC does not leak into Voice');
+  ctx.pendingSettings = {};
+  ctx.timedOutSettings = { anc_adaptive: false, voice_prompt: 'chinese' };
+  assert.equal(ctx.settingsFeedback(['anc_level', 'anc_adaptive']), 'Setting change not confirmed. Try again.');
+  assert.equal(ctx.settingsFeedback(['voice_prompt']), 'Setting change not confirmed. Try again.');
+  ctx.timedOutSettings = { voice_prompt: 'chinese' };
+  assert.equal(ctx.settingsFeedback(['anc_level', 'anc_adaptive']), '', 'Voice does not leak into ANC');
   assert.equal(ctx.reportText(false, true, false), 'Unavailable\nCharging reported');
   assert.equal(ctx.reportText(false, true, false, true), 'Unavailable / Charging reported');
   assert.equal(ctx.reportText(null, false, true), 'Not charging');

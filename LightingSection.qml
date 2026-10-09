@@ -7,6 +7,7 @@ Column {
   id: section
   required property var root
   property alias paletteToggle: palette.toggleControl
+  property alias feedbackControl: palette.feedbackControl
   spacing: Style.space(8)
   visible: root.connected
   PanelSectionHeader {

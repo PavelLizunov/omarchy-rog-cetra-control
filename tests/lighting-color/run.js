@@ -364,11 +364,11 @@ const cases = {
   },
   'collapsed color controls are disabled and expansion has a keyboard entry': () => {
     assert.match(widget, /id: deviceTab[\s\S]*?onClicked: root\.showPage\("device"\)/);
-    assert.match(widget, /visible: root\.panelPage === "device"\s+enabled: visible/);
+    assert.match(widget, /visible: root\.panelPage === "device" && !root\.languageExpanded\s+enabled: visible/);
     assert.match(widget, /visible: root\.lightingColorExpanded\s+enabled: visible/);
     assert.match(widget, /enabled: root\.opened && root\.settingsExpanded && !root\.lightingColorExpanded && root\.connected/);
     assert.match(widget, /root\.panelPage === "device" \? deviceTab : soundTab/);
-    assert.match(widget, /onLightingColorExpandedChanged:[\s\S]*?root\.focusControl\(lightingPaletteToggle\)/);
+    assert.match(widget, /onLightingColorExpandedChanged:[\s\S]*?root\.focusControl\(root\.lightingPaletteToggle\)/);
   },
   'atomic RGB selection validates input and preserves canonical settings': () => {
     const {owner,host,persisted,writes}=fixture({autoThemeColor:true,locale:'en'});
@@ -421,7 +421,7 @@ const cases = {
       a.beginLightingEdit();a.setLightingDraftChannel(0,17);a.setLightingDraftChannel(1,34);a.setLightingDraftChannel(2,51);
       owner.deviceWatchProc.running=false;
       assert.equal(a.commitLightingEdit(),false);assert.equal(a.lightingColorExpanded,true);
-      assert.equal(a.lightingDraftError,false);assert.equal(a.lightingFeedback,'rejected');
+      assert.equal(a.lightingDraftError,false);assert.equal(a.lightingFeedback,'saved-not-sent');
       assert.equal(persisted.length,1);assert.deepEqual(writes,[]);
       owner.deviceWatchProc.running=true;
       // A stale host snapshot must not change the exact draft passed to the command.

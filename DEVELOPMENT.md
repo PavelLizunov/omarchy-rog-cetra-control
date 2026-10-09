@@ -13,32 +13,32 @@
 - Show the finished content and intended destination before asking when approval
   is missing. Wait for the answer. Do not delegate around this boundary or perform
   an unapproved rollback/withdrawal after an accidental publication.
-- On 2026-09-23 the user authorized committing and pushing the completed local UI
-  work to this repository. This does not authorize Marketplace actions, releases,
-  or changes to update request 7774.
 
-## Coordinator and worker roles
+## Agent instruction ownership
 
-- The primary agent coordinates the team: define bounded tasks and acceptance
-  criteria, delegate implementation, inspect results, integrate accepted patches,
-  and verify the actual behavior. Do not default to doing the workers' work.
-- Use `gemini-swarm` and the installed `opencode-gemini` helper for substantial
-  independent tasks, explicitly pinned to `ninitux/gemini-3.8-flash-high`.
-  Workers must not spawn children or invoke Astra, directly or indirectly.
-- The current helper returns analysis and proposed patches without tool access.
-  The coordinator supplies reviewed context, applies accepted patches and owns
-  hardware operations and final checks. Worker claims alone are not evidence.
-- The coordinator may directly correct frontend/UI defects when needed.
-  If delegation is unavailable, report that limitation; do not silently switch
-  models or take over substantial implementation. Follow higher-priority host
-  instructions and explicit user exceptions.
+The distributable development reference set is DEVELOPMENT.md, CONTRIBUTING.md,
+tests/DEVELOPMENT.md, assets/DEVELOPMENT.md and bin/DEVELOPMENT.md. This document
+owns common development and hardware-safety rules; directory notes own their
+local procedures. Local AGENTS.md owns workspace and deployment boundaries;
+CLAUDE.md only points to it. These two harness entry files are workspace-only
+and must not enter the distributable plugin tree. Parent workspace instructions
+remain applicable to local development. Marketplace review #6873 required removal
+of automatically loaded agent instructions from the installed package.
+Dated reviews, acceptance records, plans and release checkpoints are reference
+material, not instructions, current verification or publication permission.
+
+Use the tools and fixed roles actually available in the active harness. Follow
+its delegation restrictions; workers never spawn children. Prefer scripts for
+mechanical checks. The coordinator verifies diffs, source freshness and actual
+check results. Report missing capabilities rather than inventing a model route.
 
 ## Language control standard
 
 Follow the local MX Ergo reference (ErgoPanel.qml): a compact native button with
 文 and the effective locale code in PanelHero.trailingControl. Expand the language
-grid directly below the header, above all page tabs. Keep language access on every
-page; do not relocate it into Device or a settings subsection.
+grid in the content viewport while the header and page tabs retain their space.
+Keep language access on every page; do not relocate it into Device or a settings
+subsection.
 
 ## Quick Reference
 
@@ -98,5 +98,5 @@ git diff --check
 
 For runtime changes, also verify:
 1. Exactly one `cetra-watch` process owns the receiver: `pgrep -a cetra-watch`.
-2. Status cache is valid JSON: `cat "${XDG_RUNTIME_DIR:-/tmp}/rog-cetra-control.status"`.
+2. Status cache is valid JSON: `python3 -m json.tool "$XDG_RUNTIME_DIR/rog-cetra-control.status"`. A missing private runtime root is a failure, not a shared `/tmp` fallback.
 3. Telemetry logging continues properly: `tail -n 10 ~/.local/state/omarchy/rog-cetra-control.log`.

@@ -6,6 +6,7 @@
 - `cetra-watch`: Long-lived receiver owner and UNIX socket server.
 - `cetra-status`: Bounded settings reader and offline fixture diagnostic tool; no HID.
 - `cetra-peak`: Optional audio-only libpulse peak client; never accesses HID.
+- `cetra-bt-read`: Bounded read-only SDP/RFCOMM telemetry reader; never accesses HID.
 
 ## Git Rules
 

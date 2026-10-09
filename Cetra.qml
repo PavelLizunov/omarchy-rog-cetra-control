@@ -13,10 +13,19 @@ CetraViewModel {
   property alias lightingPaletteToggle: lightingSection.paletteToggle
   property var languageButton: null
   onLightingColorExpandedChanged: {
-    if (!lightingColorExpanded) root.focusControl(lightingPaletteToggle)
+    if (!lightingColorExpanded) Qt.callLater(function () {
+      if (root && typeof root.focusControl === "function") root.focusControl(root.lightingPaletteToggle)
+    })
   }
   onLanguageExpandedChanged: {
-    if (!languageExpanded) root.focusControl(languageButton)
+    if (languageExpanded) {
+      root.languageSaveFailed = false
+      root.cancelLightingEdit()
+      viewport.contentY = 0
+    }
+    else Qt.callLater(function () {
+      if (root && typeof root.focusControl === "function") root.focusControl(root.languageButton)
+    })
   }
   onAudioIdentityChanged: {
     if (opened && !bluetoothExpanded) Qt.callLater(root.focusCurrentTab)
@@ -63,6 +72,12 @@ CetraViewModel {
     })
   }
 
+  function dismissPanelLayer() {
+    if (root.lightingColorExpanded) root.cancelLightingEdit()
+    else if (root.languageExpanded) root.languageExpanded = false
+    else root.close()
+  }
+
   function collectControls(item, result) {
     if (!item.visible || !item.enabled) return
     if (item.activeFocusOnTab) { result.push(item); return }
@@ -80,6 +95,14 @@ CetraViewModel {
   function focusControl(target) {
     if (!opened || !target || !target.visible || !target.enabled) return
     target.forceActiveFocus()
+    scrollControlIntoView(target)
+  }
+  function scrollControlIntoView(target) {
+    if (!opened || !target || !target.visible) return
+    // Header and tabs do not belong to the scrolling page.
+    var ancestor = target
+    while (ancestor && ancestor !== viewport.contentItem) ancestor = ancestor.parent
+    if (!ancestor) return
     var y = target.mapToItem(viewport.contentItem, 0, 0).y
     viewport.contentY = Math.max(0, Math.min(viewport.contentHeight - viewport.height,
       y < viewport.contentY ? y : Math.max(viewport.contentY, y + target.height - viewport.height)))
@@ -137,47 +160,27 @@ CetraViewModel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(380))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight)
+    readonly property real preferredWidth: Style.space(380)
+    readonly property real preferredHeight: Style.space(560)
+    contentWidth: panel.fittedContentWidth(preferredWidth)
+    contentHeight: panel.cappedContentHeight(preferredHeight)
     PanelKeyCatcher {
       id: keyCatcher
       LayoutMirroring.enabled: root.i18n.rightToLeft
       LayoutMirroring.childrenInherit: true
       anchors.fill: parent
-      onCloseRequested: root.close()
+      onCloseRequested: root.dismissPanelLayer()
       onTabRequested: function (direction) { root.moveFocus(direction, true) }
       onMoveRequested: function (dx, dy) { root.moveFocus(dx || dy, false) }
       onActivateRequested: root.activateFocus()
       onTextKey: function (t) { root.handleTextKey(t) }
-      Flickable {
-        id: viewport
+      Item {
+        id: column
         anchors.fill: parent
-        anchors.rightMargin: scrollBar.visible ? Style.spacing.controlGap : 0
-        contentWidth: width
-        contentHeight: column.implicitHeight
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        flickableDirection: Flickable.VerticalFlick
-        Controls.ScrollBar.vertical: Controls.ScrollBar {
-          id: scrollBar
-          parent: keyCatcher
-          anchors.top: parent.top
-          anchors.bottom: parent.bottom
-          anchors.right: parent.right
-          width: Style.space(3)
-          policy: Controls.ScrollBar.AsNeeded
-          contentItem: Rectangle {
-            implicitWidth: Style.space(3)
-            radius: width / 2
-            color: root.dim
-            opacity: scrollBar.active || scrollBar.hovered ? 0.8 : 0.4
-          }
-        }
         Column {
-          id: column
-          anchors.left: parent.left
-          anchors.right: parent.right
+          id: navigation
           anchors.top: parent.top
+          width: parent.width
           spacing: Style.spacing.panelGap
           PanelHero {
             width: parent.width
@@ -212,13 +215,13 @@ CetraViewModel {
               }
             }
           }
-          LanguageSection { root: panelHost; width: parent.width }
           Row {
             id: pageTabs
             width: parent.width
             spacing: Style.spacing.controlGap
             ControlButton {
               id: soundTab
+              height: Math.max(Style.space(36), implicitHeight)
               panelRoot: root
               width: (pageTabs.width - pageTabs.spacing) / 2
               label: root.tr("panel.sound", "Sound")
@@ -232,6 +235,7 @@ CetraViewModel {
             }
             ControlButton {
               id: deviceTab
+              height: Math.max(Style.space(36), implicitHeight)
               panelRoot: root
               width: (pageTabs.width - pageTabs.spacing) / 2
               label: root.tr("panel.device", "Device")
@@ -244,38 +248,19 @@ CetraViewModel {
               onClicked: root.showPage("device")
             }
           }
-          Column {
+          // Reserve the sub-tab row on every page so content keeps its anchor.
+          Item {
             width: parent.width
-            spacing: Style.spacing.panelGap
-            visible: root.panelPage === "sound"
-            enabled: visible
-            BatterySection { root: panelHost; width: parent.width }
-            NoiseSection { root: panelHost; width: parent.width }
-            BluetoothSoundSection { root: panelHost; width: parent.width }
-            ControlButton {
-              panelRoot: root
-              width: parent.width
-              visible: !root.connected && root.audioIdentity !== "selected" && root.bluetoothCandidates.length > 0
-              label: root.tr("connection.selectEarbuds", "Select Bluetooth earbuds")
-              foreground: root.foreground
-              accent: root.accent
-              fontFamily: root.fontFamily
-              bordered: true
-              onClicked: root.showPage("device")
-            }
-            MicrophoneSection { root: panelHost; width: parent.width }
-          }
-          Column {
-            width: parent.width
-            spacing: Style.spacing.panelGap
-            visible: root.panelPage === "device"
-            enabled: visible
+            height: deviceTabs.implicitHeight
             Row {
               id: deviceTabs
               width: parent.width
+              visible: root.panelPage === "device" && !root.languageExpanded
+              enabled: visible
               spacing: Style.spacing.controlGap
               ControlButton {
                 id: deviceSettingsTab
+                height: Math.max(Style.space(28), implicitHeight)
                 panelRoot: root
                 horizontalPadding: Style.space(10)
                 verticalPadding: Style.space(4)
@@ -290,6 +275,7 @@ CetraViewModel {
               }
               ControlButton {
                 id: colorTab
+                height: Math.max(Style.space(28), implicitHeight)
                 panelRoot: root
                 horizontalPadding: Style.space(10)
                 verticalPadding: Style.space(4)
@@ -303,64 +289,136 @@ CetraViewModel {
                 onClicked: root.showDevicePage("color")
               }
             }
+          }
+        }
+        Flickable {
+          id: viewport
+          anchors.top: navigation.bottom
+          anchors.topMargin: Style.spacing.panelGap
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.bottom: parent.bottom
+          // Reserve the scrollbar gutter even when the page is short.
+          anchors.rightMargin: Style.spacing.controlGap
+          contentWidth: width
+          contentHeight: pageContent.implicitHeight
+          onContentHeightChanged: {
+            if (root.lightingColorExpanded && lightingSection.feedbackControl.visible)
+              root.scrollControlIntoView(lightingSection.feedbackControl)
+          }
+          clip: true
+          boundsBehavior: Flickable.StopAtBounds
+          flickableDirection: Flickable.VerticalFlick
+          Controls.ScrollBar.vertical: Controls.ScrollBar {
+            id: scrollBar
+            parent: column
+            anchors.top: viewport.top
+            anchors.bottom: viewport.bottom
+            anchors.right: parent.right
+            width: Style.space(3)
+            policy: Controls.ScrollBar.AsNeeded
+            contentItem: Rectangle {
+              implicitWidth: Style.space(3)
+              radius: width / 2
+              color: root.dim
+              opacity: scrollBar.active || scrollBar.hovered ? 0.8 : 0.4
+            }
+          }
+          Column {
+            id: pageContent
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            spacing: Style.spacing.panelGap
+            LanguageSection { root: panelHost; width: parent.width }
             Column {
               width: parent.width
               spacing: Style.spacing.panelGap
-              visible: root.devicePage === "settings"
+              visible: root.panelPage === "sound" && !root.languageExpanded
               enabled: visible
-              SettingToggle {
+              BatterySection { root: panelHost; width: parent.width }
+              NoiseSection { root: panelHost; width: parent.width }
+              BluetoothSoundSection { root: panelHost; width: parent.width }
+              ControlButton {
                 panelRoot: root
                 width: parent.width
-                label: root.tr("microphone.showLevel", "Show microphone level")
-                value: root.showMicLevel
-                onClicked: root.setShowMicLevel(!root.showMicLevel)
-              }
-              ConnectionSection { root: panelHost; width: parent.width }
-              Column {
-                width: parent.width
-                spacing: Style.spacing.panelGap
-                visible: root.connected
-                enabled: visible
-                VoiceSection { root: panelHost; width: parent.width }
-                Text {
-                  textFormat: Text.PlainText
-                  width: parent.width
-                  visible: text !== ""
-                  text: root.settingsFeedback()
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  wrapMode: Text.WordWrap
-                }
-                Text {
-                  textFormat: Text.PlainText
-                  width: parent.width
-                  text: root.tr("noise.shortcuts", "O / {off}    N / {anc}    A / {ambient}", {
-                    off: root.modeText("off"), anc: root.modeText("anc"), ambient: root.modeText("ambient")
-                  })
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  wrapMode: Text.WordWrap
+                visible: !root.connected && root.audioIdentity !== "selected" && root.bluetoothCandidates.length > 0
+                label: root.tr("connection.selectEarbuds", "Select Bluetooth earbuds")
+                foreground: root.foreground
+                accent: root.accent
+                fontFamily: root.fontFamily
+                bordered: true
+                onClicked: {
+                  root.showPage("device")
+                  root.showDevicePage("settings")
                 }
               }
+              MicrophoneSection { root: panelHost; width: parent.width }
             }
             Column {
               width: parent.width
               spacing: Style.spacing.panelGap
-              visible: root.devicePage === "color"
+              visible: root.panelPage === "device" && !root.languageExpanded
               enabled: visible
-              Text {
-                textFormat: Text.PlainText
+              Column {
                 width: parent.width
-                visible: !root.connected
-                text: root.tr("lighting.usbOnly", "Connect the earbuds through USB to control lighting.")
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                wrapMode: Text.Wrap
+                spacing: Style.spacing.panelGap
+                visible: root.devicePage === "settings"
+                enabled: visible
+                SettingToggle {
+                  panelRoot: root
+                  width: parent.width
+                  label: root.tr("microphone.showLevel", "Show microphone level")
+                  value: root.showMicLevel
+                  onClicked: root.setShowMicLevel(!root.showMicLevel)
+                }
+                ConnectionSection { root: panelHost; width: parent.width }
+                Column {
+                  width: parent.width
+                  spacing: Style.spacing.panelGap
+                  visible: root.connected
+                  enabled: visible
+                  VoiceSection { root: panelHost; width: parent.width }
+                  Text {
+                    textFormat: Text.PlainText
+                    width: parent.width
+                    visible: text !== ""
+                    text: root.settingsFeedback(["voice_prompt"])
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    wrapMode: Text.WordWrap
+                  }
+                  Text {
+                    textFormat: Text.PlainText
+                    width: parent.width
+                    text: root.tr("noise.shortcuts", "O / {off}    N / {anc}    A / {ambient}", {
+                      off: root.modeText("off"), anc: root.modeText("anc"), ambient: root.modeText("ambient")
+                    })
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    wrapMode: Text.WordWrap
+                  }
+                }
               }
-              LightingSection { id: lightingSection; root: panelHost; width: parent.width }
+              Column {
+                width: parent.width
+                spacing: Style.spacing.panelGap
+                visible: root.devicePage === "color"
+                enabled: visible
+                Text {
+                  textFormat: Text.PlainText
+                  width: parent.width
+                  visible: !root.connected
+                  text: root.tr("lighting.usbOnly", "Connect the earbuds through USB to control lighting.")
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  wrapMode: Text.Wrap
+                }
+                LightingSection { id: lightingSection; root: panelHost; width: parent.width }
+              }
             }
           }
         }

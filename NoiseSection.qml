@@ -91,6 +91,17 @@ Column {
   }
   Text {
     textFormat: Text.PlainText
+    id: ancFeedback
+    width: parent.width
+    text: root.settingsFeedback(["anc_level", "anc_adaptive"])
+    visible: text !== ""
+    color: root.dim
+    font.family: root.fontFamily
+    font.pixelSize: Style.font.caption
+    wrapMode: Text.WordWrap
+  }
+  Text {
+    textFormat: Text.PlainText
     width: parent.width
     text: root.pendingMode !== ""
       ? root.tr("noise.switching", "Switching to {mode}\u2026", { mode: root.modeText(root.pendingMode) })

@@ -145,11 +145,11 @@
   "connection.selectEarbuds": "Выбрать Bluetooth-наушники",
   "panel.settings": "Настройки",
   "panel.color": "Цвет",
-  "lighting.usbOnly": "Для управления подсветкой подключи наушники через USB.",
+  "lighting.usbOnly": "Для управления подсветкой подключите наушники через USB.",
   "lighting.chooseColor": "Выбрать цвет",
   "lighting.cancelColor": "Отмена",
-  "lighting.swatchHint": "Нажми на круг, чтобы выбрать цвет.",
-  "lighting.colorSaveFailed": "Не удалось сохранить цвет. Попробуй ещё раз.",
+  "lighting.swatchHint": "Нажмите на круг, чтобы выбрать цвет.",
+  "lighting.colorSaveFailed": "Не удалось сохранить цвет. Попробуйте снова.",
   "settings.toggleState": "{label} / {state}",
   "lighting.palette": "Палитра цветов",
   "lighting.paletteHelp": "Влево и вправо — оттенок; вверх и вниз — насыщенность.",
@@ -159,5 +159,8 @@
   "lighting.exactColorExpand": "Точный цвет  +",
   "lighting.exactColorCollapse": "Точный цвет  −",
   "lighting.channelValue": "{channel}: {value}",
-  "lighting.selectedColor": "Выбранный цвет"
+  "lighting.selectedColor": "Выбранный цвет",
+  "lighting.savedNotSent": "Цвет сохранён, но не отправлен. Проверьте соединение и примените снова.",
+  "lighting.closeColor": "Закрыть",
+  "language.saveFailed": "Не удалось сохранить язык. Попробуйте снова."
 }

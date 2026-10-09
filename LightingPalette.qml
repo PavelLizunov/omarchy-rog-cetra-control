@@ -9,6 +9,7 @@ FocusScope {
   property bool exactExpanded: false
   property bool hexInvalid: false
   property alias toggleControl: lightingPaletteToggle
+  property alias feedbackControl: lightingMessage
   implicitHeight: lightingColorColumn.implicitHeight
   Column {
     id: lightingColorColumn
@@ -259,13 +260,14 @@ FocusScope {
           fontFamily: root.fontFamily
           fontSize: Style.font.bodySmall
           bordered: true
-          selected: true
+          selected: enabled
           onClicked: root.commitLightingEdit()
         }
         ControlButton {
           panelRoot: section.root
           width: (editorActions.width - editorActions.spacing) / 2
-          label: root.tr("lighting.cancelColor", "Cancel")
+          label: root.lightingFeedback === "saved-not-sent"
+            ? root.tr("lighting.closeColor", "Close") : root.tr("lighting.cancelColor", "Cancel")
           foreground: root.foreground
           accent: root.accent
           fontFamily: root.fontFamily
@@ -276,15 +278,25 @@ FocusScope {
       }
       Text {
         textFormat: Text.PlainText
+        id: lightingMessage
         width: parent.width
-        visible: root.lightingDraftError || root.lightingFeedback === "rejected"
+        visible: root.lightingDraftError || root.lightingFeedback === "saved-not-sent"
         text: root.lightingDraftError
           ? root.tr("lighting.colorSaveFailed", "Could not save the color. Try again.")
-          : root.tr("lighting.requestRejected", "Not sent. Check the connection and selected color.")
+          : root.lightingFeedbackText()
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
         wrapMode: Text.Wrap
+        function revealMessage() {
+          if (visible) Qt.callLater(function () {
+            if (section.root && typeof section.root.scrollControlIntoView === "function")
+              section.root.scrollControlIntoView(lightingMessage)
+          })
+        }
+        onVisibleChanged: revealMessage()
+        onYChanged: revealMessage()
+        onHeightChanged: revealMessage()
       }
     }
     Column {
@@ -311,9 +323,7 @@ FocusScope {
         textFormat: Text.PlainText
         width: parent.width
         visible: root.lightingFeedback !== ""
-        text: root.lightingFeedback === "sent"
-          ? root.tr("lighting.requestSent", "Request sent to device helper.")
-          : root.tr("lighting.requestRejected", "Not sent. Check the connection and selected color.")
+        text: root.lightingFeedbackText()
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption

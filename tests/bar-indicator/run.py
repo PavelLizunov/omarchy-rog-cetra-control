@@ -48,6 +48,8 @@ Rectangle {
         id: model
         property var leftLevel: cell.modelData.l
         property var rightLevel: cell.modelData.r
+        property var leftPresent: true
+        property var rightPresent: true
         property var microphoneLevel: cell.modelData.mic
         property bool connected: true
         property string microphoneCaptureState: "active"
@@ -72,6 +74,8 @@ Rectangle {
         id: smallModel
         property var leftLevel: small.modelData
         property var rightLevel: small.modelData
+        property var leftPresent: true
+        property var rightPresent: true
         property var microphoneLevel: 0.8
         property bool connected: true
         property string microphoneCaptureState: "active"

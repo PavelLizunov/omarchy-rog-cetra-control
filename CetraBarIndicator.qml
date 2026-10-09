@@ -67,20 +67,22 @@ Item {
       transformOrigin: Item.TopLeft
 
       // A subdued shell keeps the body legible above the charge waterline.
-      // Keep zero and unavailable levels hollow so they remain distinct states.
+      // Measured zero stays hollow; presence keeps the shell when charge is unknown.
       Shape {
         anchors.fill: parent
         preferredRendererType: Shape.CurveRenderer
         ShapePath {
           strokeWidth: 0
           strokeColor: "transparent"
-          fillColor: indicator.hasLeftLevel && indicator.leftPct > 0 ? indicator.chargeShellColor : "transparent"
+          fillColor: (indicator.hasLeftLevel ? indicator.leftPct > 0 : root.leftPresent === true)
+            ? indicator.chargeShellColor : "transparent"
           PathSvg { path: indicator.leftOutline }
         }
         ShapePath {
           strokeWidth: 0
           strokeColor: "transparent"
-          fillColor: indicator.hasRightLevel && indicator.rightPct > 0 ? indicator.chargeShellColor : "transparent"
+          fillColor: (indicator.hasRightLevel ? indicator.rightPct > 0 : root.rightPresent === true)
+            ? indicator.chargeShellColor : "transparent"
           PathSvg { path: indicator.rightOutline }
         }
       }

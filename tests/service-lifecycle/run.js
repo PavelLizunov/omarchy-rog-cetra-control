@@ -426,11 +426,11 @@ const cases = {
       assert.equal(ctx.deviceWatchProc.stopHandled, false);
     }
   },
-  'panel height uses content and screen limit without a fixed 560 cap': () => {
-    assert.match(widgetSource, /contentHeight: panel\.fittedContentHeight\(column\.implicitHeight\)/);
-    assert.doesNotMatch(widgetSource, /fittedContentHeight\(column\.implicitHeight\s*,/);
+  'panel keeps preferred geometry within the screen and scrolls page content': () => {
+    assert.match(widgetSource, /preferredHeight: Style\.space\(560\)/);
+    assert.match(widgetSource, /contentHeight: panel\.cappedContentHeight\(preferredHeight\)/);
     assert.match(widgetSource, /flickableDirection: Flickable\.VerticalFlick/);
-    assert.match(widgetSource, /contentHeight: column\.implicitHeight/);
+    assert.match(widgetSource, /contentHeight: pageContent\.implicitHeight/);
   },
   'manifest and source enforce service-only ownership': () => {
     assert.deepEqual(manifest.kinds, ['bar-widget', 'service']);

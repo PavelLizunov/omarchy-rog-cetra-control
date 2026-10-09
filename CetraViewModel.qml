@@ -44,6 +44,7 @@ Panel {
   readonly property bool settingsExpanded: panelPage === "device"
   property bool lightingColorExpanded: false
   property bool languageExpanded: false
+  property bool languageSaveFailed: false
   property string lightingFeedback: ""
   readonly property bool showMicLevel: preference("showMicLevel", false) === true
   readonly property string microphoneCaptureState: service && service.microphoneCaptureState !== undefined ? service.microphoneCaptureState : "unknown"
@@ -122,6 +123,7 @@ Panel {
   readonly property var ancAdaptive: service ? service.ancAdaptive : null
   readonly property string voicePrompt: service ? service.voicePrompt : "unknown"
   readonly property var pendingSettings: service ? service.pendingSettings : ({})
+  readonly property var timedOutSettings: service ? service.timedOutSettings : ({})
   readonly property bool settingsRequestTimedOut: service ? service.settingsRequestTimedOut : false
   readonly property string settingsStatusKey: service ? service.settingsStatusKey : ""
   readonly property string lighting: service ? service.lighting : "unknown"
@@ -211,11 +213,7 @@ Panel {
     var loc = preference("locale", "system")
     return typeof loc === "string" && loc.trim() !== "" ? loc.trim() : "system"
   }
-  readonly property string displayLocaleCode: {
-    if (root.currentLocaleCode === "system" || root.currentLocaleCode === "auto")
-      return i18n.effectiveLocale.toUpperCase().slice(0, 2)
-    return root.currentLocaleCode.toUpperCase().slice(0, 2)
-  }
+  readonly property string displayLocaleCode: i18n.effectiveLocale.toUpperCase().slice(0, 2)
   readonly property var languageOptions: [
     { code: "system", label: root.tr("language.system", "System") },
     { code: "en", label: root.tr("language.en", "English") },
@@ -335,9 +333,16 @@ Panel {
     var sent = service.setLighting(colorApplyEffect, {
       r: lightingDraftRgb[0] / 255, g: lightingDraftRgb[1] / 255, b: lightingDraftRgb[2] / 255
     })
-    lightingFeedback = sent ? "sent" : "rejected"
+    lightingFeedback = sent ? "sent" : "saved-not-sent"
     if (sent) lightingColorExpanded = false
     return !!sent
+  }
+  function lightingFeedbackText() {
+    if (lightingFeedback === "saved-not-sent")
+      return root.tr("lighting.savedNotSent", "Color saved, but not sent. Check the connection and apply again.")
+    if (lightingFeedback === "sent")
+      return root.tr("lighting.requestSent", "Request sent to device helper.")
+    return root.tr("lighting.requestRejected", "Not sent. Check the connection and selected color.")
   }
   function setLightingSetting(name, value) {
     if (!bar || !bar.shell || typeof bar.shell.updateEntryInline !== "function") return false
@@ -401,8 +406,13 @@ Panel {
   function settingStateText(value) {
     return value === true ? root.tr("settings.on", "On") : value === false ? root.tr("settings.off", "Off") : root.tr("settings.unknown", "Unknown")
   }
-  function settingsFeedback() {
-    return settingsStatusKey === "settings.notConfirmed" ? root.tr("settings.notConfirmed", "Setting change not confirmed. Try again.")
-      : settingsStatusKey === "settings.pending" ? root.tr("settings.pending", "Waiting for setting readback...") : ""
+  function settingsFeedback(commands) {
+    var status = settingsStatusKey
+    if (commands) {
+      status = commands.some(function (key) { return timedOutSettings[key] !== undefined }) ? "settings.notConfirmed"
+        : commands.some(function (key) { return pendingSettings[key] !== undefined }) ? "settings.pending" : ""
+    }
+    return status === "settings.notConfirmed" ? root.tr("settings.notConfirmed", "Setting change not confirmed. Try again.")
+      : status === "settings.pending" ? root.tr("settings.pending", "Waiting for setting readback...") : ""
   }
 }

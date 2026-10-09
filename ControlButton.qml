@@ -7,6 +7,7 @@ Button {
   id: controlButton
   required property var panelRoot
   property string label: ""
+  opacity: enabled ? 1 : 0.5
   text: ""
   implicitWidth: buttonLabel.implicitWidth + horizontalPadding * 2 + Style.normalBorderWidth * 2
   implicitHeight: buttonLabel.implicitHeight + verticalPadding * 2 + Style.normalBorderWidth * 2
