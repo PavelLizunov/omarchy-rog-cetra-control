@@ -6,7 +6,8 @@ const {read, widgetFiles, serviceFiles} = require('./qml-source.js');
 const root = path.resolve(__dirname, '..');
 const entry = read('Cetra.qml');
 assert.match(entry, /CetraViewModel\s*\{/);
-assert.match(entry, /i18n: I18n/);
+assert.match(entry, /import "\." as Plugin/);
+assert.match(entry, /i18n: Plugin\.I18n/);
 assert.match(read('CetraService.qml'), /CetraPreferences\s*\{/);
 assert.match(read('CetraService.qml'), /CallDetector\s*\{.*root: serviceHost/);
 for (const name of ['LanguageSection', 'BatterySection', 'NoiseSection', 'MicrophoneSection', 'LightingSection', 'VoiceSection']) {
