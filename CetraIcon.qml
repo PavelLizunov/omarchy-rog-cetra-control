@@ -1,12 +1,13 @@
 import QtQuick
 import QtQuick.Effects
 import qs.Commons
+import qs.Commons as Host
 
 Item {
   id: root
 
   property string name: "cetra"
-  property color color: Color.foreground
+  property color color: Host.Color.foreground
   property real iconSize: 24
 
   implicitWidth: iconSize

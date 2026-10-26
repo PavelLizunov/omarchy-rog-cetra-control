@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Host
 import qs.Ui
 
 // View-facing projection and actions. No processes or device ownership.
@@ -16,14 +17,14 @@ Panel {
     var current = service ? service.settings : settings
     return current && current[name] !== undefined && current[name] !== null ? current[name] : fallback
   }
-  readonly property color foreground: bar ? bar.foreground : Color.foreground
+  readonly property color foreground: bar ? bar.foreground : Host.Color.foreground
   readonly property color accent: accentFor(bar)
   function accentFor(host) {
-    return host && host.accent !== undefined ? host.accent : Color.accent
+    return host && host.accent !== undefined ? host.accent : Host.Color.accent
   }
-  readonly property color warningColor: readableWarning(bar ? bar.urgent : Color.urgent, Color.popups.background, foreground)
+  readonly property color warningColor: readableWarning(bar ? bar.urgent : Host.Color.urgent, Host.Color.popups.background, foreground)
   readonly property color barColor: lowestLevel >= 0 && lowestLevel <= 20
-    ? readableWarning(bar ? bar.urgent : Color.urgent, Color.bar.background, barForeground) : barForeground
+    ? readableWarning(bar ? bar.urgent : Host.Color.urgent, Host.Color.bar.background, barForeground) : barForeground
   function luminance(color) {
     var channels = [color.r, color.g, color.b].map(function (v) {
       return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)

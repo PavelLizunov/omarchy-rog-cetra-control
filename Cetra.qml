@@ -2,13 +2,14 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls as Controls
 import qs.Commons
+import "." as Local
 import qs.Ui
 
 // Entry point: bar button, panel composition and keyboard lifecycle only.
 CetraViewModel {
   id: root
   readonly property var panelHost: root
-  i18n: I18n { language: root.preference("locale", "system") }
+  i18n: Local.I18n { language: root.preference("locale", "system") }
   property alias keyTarget: keyCatcher
   property alias lightingPaletteToggle: lightingSection.paletteToggle
   property var languageButton: null

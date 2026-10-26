@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import qs.Commons as Host
 
 CetraPreferences {
   id: root
@@ -90,7 +91,7 @@ CetraPreferences {
       MicrophoneMeter { topology: audioTopology }
     }
   }
-  readonly property color themeColor: Color.accent
+  readonly property color themeColor: Host.Color.accent
   property string sessionLightingEffect: ""
   property string lastLightingPayload: ""
   readonly property bool autoThemeColor: settings.autoThemeColor === true
